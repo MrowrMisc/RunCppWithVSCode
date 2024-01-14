@@ -96,11 +96,20 @@ var __importStar = (this && this.__importStar) || function (mod) {
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.registerTestCommand = exports.runTestCommandId = void 0;
 const vscode = __importStar(__webpack_require__(1));
+const runCppOutputChannel_1 = __webpack_require__(4);
+const xmakeTestRunner_1 = __webpack_require__(5);
 exports.runTestCommandId = "coolextension.runtest";
 // run test function with a string parameter for file path and a number parameter for line number:
-function runTest(filePath, lineNumber) {
+async function runTest(filePath, lineNumber) {
     // Simply show a VS Code informational message with the parameters that were probvided:
     vscode.window.showInformationMessage(`Running test at ${filePath}:${lineNumber}`);
+    runCppOutputChannel_1.runCppOutputChannel.appendLine(`Running test at ${filePath}:${lineNumber}`);
+    runCppOutputChannel_1.runCppOutputChannel.show();
+    // Let's actually run this and get a test result
+    const testRunner = new xmakeTestRunner_1.XmakeTestRunner();
+    const testResult = await testRunner.runTest(filePath, lineNumber);
+    runCppOutputChannel_1.runCppOutputChannel.appendLine(`>> Test output: ${testResult.testOutput}`); // data.toString()}
+    runCppOutputChannel_1.runCppOutputChannel.appendLine(`>> Test passed: ${testResult.testPassed}`);
 }
 function registerTestCommand(context) {
     let disposable = vscode.commands.registerCommand(exports.runTestCommandId, runTest);
@@ -108,6 +117,124 @@ function registerTestCommand(context) {
 }
 exports.registerTestCommand = registerTestCommand;
 
+
+/***/ }),
+/* 4 */
+/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
+
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.runCppOutputChannel = void 0;
+const vscode = __importStar(__webpack_require__(1));
+const runCppOutputChannelName = "Run C++ Stuff";
+exports.runCppOutputChannel = vscode.window.createOutputChannel(runCppOutputChannelName);
+
+
+/***/ }),
+/* 5 */
+/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
+
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.XmakeTestRunner = void 0;
+const testRunner_1 = __webpack_require__(6);
+const vscode = __importStar(__webpack_require__(1));
+const child_process = __importStar(__webpack_require__(7));
+class XmakeTestRunner {
+    async runTest(filePath, lineNumber) {
+        let testResult = new testRunner_1.TestResult();
+        const command = `xmake run Tests "${filePath}" "${lineNumber}"`;
+        const options = { cwd: vscode.workspace.workspaceFolders?.[0].uri.fsPath };
+        return new Promise((resolve, reject) => {
+            const child = child_process.exec(command, options, (error) => {
+                if (error)
+                    reject(error);
+            });
+            child.stdout?.on("data", (data) => {
+                testResult.testOutput += data;
+            });
+            child.stderr?.on("data", (data) => {
+                testResult.testOutput += data;
+            });
+            child.on("close", (code) => {
+                testResult.testPassed = code === 0;
+                resolve(testResult);
+            });
+        });
+    }
+}
+exports.XmakeTestRunner = XmakeTestRunner;
+
+
+/***/ }),
+/* 6 */
+/***/ ((__unused_webpack_module, exports) => {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.TestResult = void 0;
+class TestResult {
+    testOutput;
+    testPassed;
+    constructor(testOutput = "", testPassed = false) {
+        this.testOutput = testOutput;
+        this.testPassed = testPassed;
+    }
+}
+exports.TestResult = TestResult;
+
+
+/***/ }),
+/* 7 */
+/***/ ((module) => {
+
+module.exports = require("child_process");
 
 /***/ })
 /******/ 	]);
@@ -153,30 +280,6 @@ function activate(context) {
 exports.activate = activate;
 function deactivate() { }
 exports.deactivate = deactivate;
-////
-// import * as child_process from "child_process";
-// export function activate(context: vscode.ExtensionContext) {
-//     let disposable = vscode.commands.registerCommand("runcppfunctionsextension.runSomeCpp", () => {
-//         // vscode.window.showInformationMessage("Hello World from RunCppFunctionsExtension!");
-//         const outputChannel = vscode.window.createOutputChannel("RunCppFunctionsExtension");
-//         outputChannel.show();
-//         // Run the command "xmake run Tests" and get its output and show it in the output channel
-//         // Note that the command should be run from the root directory of the project
-//         const command = "xmake run Tests Hello World";
-//         const options = { cwd: vscode.workspace.rootPath };
-//         const child = child_process.exec(command, options);
-//         child.stdout?.on("data", (data) => {
-//             outputChannel.append(data);
-//         });
-//         child.stderr?.on("data", (data) => {
-//             outputChannel.append(data);
-//         });
-//         child.on("close", (code) => {
-//             outputChannel.appendLine(`The process exited with code ${code}`);
-//         });
-//     });
-//     context.subscriptions.push(disposable);
-// }
 
 })();
 
