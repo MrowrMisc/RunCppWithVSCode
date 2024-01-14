@@ -1,0 +1,1 @@
+includes("MyCppProject/xmake.lua")

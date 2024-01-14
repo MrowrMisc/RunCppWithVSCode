@@ -1,26 +1,39 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
-import * as vscode from 'vscode';
+import * as vscode from "vscode";
+import { registerTestCommand } from "./commands/runTestCommand";
+import { registerTestCodeLens } from "./codelens/testMacroCodeLensProvider";
 
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
-
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "runcppfunctionsextension" is now active!');
-
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with registerCommand
-	// The commandId parameter must match the command field in package.json
-	let disposable = vscode.commands.registerCommand('runcppfunctionsextension.helloWorld', () => {
-		// The code you place here will be executed every time your command is executed
-		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World from RunCppFunctionsExtension!');
-	});
-
-	context.subscriptions.push(disposable);
+    registerTestCommand(context);
+    registerTestCodeLens(context);
 }
 
-// This method is called when your extension is deactivated
 export function deactivate() {}
+
+////
+// import * as child_process from "child_process";
+
+// export function activate(context: vscode.ExtensionContext) {
+//     let disposable = vscode.commands.registerCommand("runcppfunctionsextension.runSomeCpp", () => {
+//         // vscode.window.showInformationMessage("Hello World from RunCppFunctionsExtension!");
+
+//         const outputChannel = vscode.window.createOutputChannel("RunCppFunctionsExtension");
+//         outputChannel.show();
+
+//         // Run the command "xmake run Tests" and get its output and show it in the output channel
+//         // Note that the command should be run from the root directory of the project
+//         const command = "xmake run Tests Hello World";
+//         const options = { cwd: vscode.workspace.rootPath };
+//         const child = child_process.exec(command, options);
+//         child.stdout?.on("data", (data) => {
+//             outputChannel.append(data);
+//         });
+//         child.stderr?.on("data", (data) => {
+//             outputChannel.append(data);
+//         });
+//         child.on("close", (code) => {
+//             outputChannel.appendLine(`The process exited with code ${code}`);
+//         });
+//     });
+
+//     context.subscriptions.push(disposable);
+// }

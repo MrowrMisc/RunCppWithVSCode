@@ -9,13 +9,20 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onLanguage:cpp"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "runcppfunctionsextension.helloWorld",
-        "title": "Hello World"
+        "command": "coolextension.runtest",
+        "title": "Run C++ Test"
+      }
+    ],
+    "codeLensProvider": [
+      {
+        "language": "cpp"
       }
     ]
   },
