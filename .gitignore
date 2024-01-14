@@ -1,1 +1,4 @@
 .yarn
+compile_commands
+.xmake
+build

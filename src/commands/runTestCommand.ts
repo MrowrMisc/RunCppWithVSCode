@@ -14,8 +14,8 @@ async function runTest(filePath: string, lineNumber: number) {
     // Let's actually run this and get a test result
     const testRunner = new XmakeTestRunner();
     const testResult = await testRunner.runTest(filePath, lineNumber);
-    runCppOutputChannel.appendLine(`>> Test output: ${testResult.testOutput}`); // data.toString()}
-    runCppOutputChannel.appendLine(`>> Test passed: ${testResult.testPassed}`);
+    runCppOutputChannel.appendLine(`Test output: ${testResult.testOutput}`); // data.toString()}
+    runCppOutputChannel.appendLine(`Test passed: ${testResult.testPassed}`);
 }
 
 export function registerTestCommand(context: vscode.ExtensionContext) {

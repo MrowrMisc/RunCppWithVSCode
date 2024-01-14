@@ -47,10 +47,12 @@ class TestCodeLensProvider {
             const line = document.lineAt(i);
             if (line.text.match(regex)) {
                 const range = new vscode.Range(i, 0, i, 0);
+                const filepath = vscode.workspace.asRelativePath(document.uri.fsPath);
+                const linenumber = i + 1;
                 const command = {
                     title: "Run Test",
                     command: runTestCommand_1.runTestCommandId,
-                    arguments: [document.uri.fsPath, i],
+                    arguments: [filepath, linenumber],
                 };
                 lenses.push(new vscode.CodeLens(range, command));
             }
@@ -108,8 +110,8 @@ async function runTest(filePath, lineNumber) {
     // Let's actually run this and get a test result
     const testRunner = new xmakeTestRunner_1.XmakeTestRunner();
     const testResult = await testRunner.runTest(filePath, lineNumber);
-    runCppOutputChannel_1.runCppOutputChannel.appendLine(`>> Test output: ${testResult.testOutput}`); // data.toString()}
-    runCppOutputChannel_1.runCppOutputChannel.appendLine(`>> Test passed: ${testResult.testPassed}`);
+    runCppOutputChannel_1.runCppOutputChannel.appendLine(`Test output: ${testResult.testOutput}`); // data.toString()}
+    runCppOutputChannel_1.runCppOutputChannel.appendLine(`Test passed: ${testResult.testPassed}`);
 }
 function registerTestCommand(context) {
     let disposable = vscode.commands.registerCommand(exports.runTestCommandId, runTest);
@@ -193,8 +195,11 @@ class XmakeTestRunner {
         const options = { cwd: vscode.workspace.workspaceFolders?.[0].uri.fsPath };
         return new Promise((resolve, reject) => {
             const child = child_process.exec(command, options, (error) => {
-                if (error)
-                    reject(error);
+                if (error) {
+                    testResult.testOutput += error.message;
+                    testResult.testPassed = false;
+                    resolve(testResult);
+                }
             });
             child.stdout?.on("data", (data) => {
                 testResult.testOutput += data;

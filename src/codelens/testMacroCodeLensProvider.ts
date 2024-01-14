@@ -10,10 +10,12 @@ class TestCodeLensProvider implements vscode.CodeLensProvider {
             const line = document.lineAt(i);
             if (line.text.match(regex)) {
                 const range = new vscode.Range(i, 0, i, 0);
+                const filepath = vscode.workspace.asRelativePath(document.uri.fsPath);
+                const linenumber = i + 1;
                 const command: vscode.Command = {
                     title: "Run Test",
                     command: runTestCommandId,
-                    arguments: [document.uri.fsPath, i],
+                    arguments: [filepath, linenumber],
                 };
                 lenses.push(new vscode.CodeLens(range, command));
             }

@@ -11,7 +11,11 @@ export class XmakeTestRunner implements ITestRunner {
 
         return new Promise((resolve, reject) => {
             const child = child_process.exec(command, options, (error) => {
-                if (error) reject(error);
+                if (error) {
+                    testResult.testOutput += error.message;
+                    testResult.testPassed = false;
+                    resolve(testResult);
+                }
             });
             child.stdout?.on("data", (data) => {
                 testResult.testOutput += data;
