@@ -65,10 +65,10 @@ struct TestFramework {
             current_group()->tests.emplace_back(test);
             _tests[filename][line] = test;
         }
-        void add_setup(const std::string&, std::function<void()> fn) {
+        void add_setup(const std::string&, const std::string&, unsigned int, std::function<void()> fn) {
             current_group()->setups.emplace_back(new SetupOrTeardown{current_group(), fn});
         }
-        void add_teardown(const std::string&, std::function<void()> fn) {
+        void add_teardown(const std::string&, const std::string&, unsigned int, std::function<void()> fn) {
             current_group()->teardowns.emplace_back(new SetupOrTeardown({current_group(), fn}));
         }
         void define_group(const std::string& description, bool root = false) {
@@ -100,9 +100,11 @@ struct TestFramework {
             for (const auto& lineNumber_test : filename_fileTests.second) f(lineNumber_test.second);
     }
 
-    static void RunTest(TestInfo* test) {
+    // TODO run setups and teardowns. Let's have a RunGroup() with inner RunGroup() calls :)
+    static bool RunTest(TestInfo* test) {
         try {
             test->fn();
+            return true;
         } catch (const std::exception& e) {
             std::cout << test->filename << ":" << test->line_number << ": " << e.what() << std::endl;
         } catch (const char* e) {
@@ -110,6 +112,7 @@ struct TestFramework {
         } catch (...) {
             std::cout << test->filename << ":" << test->line_number << ": unknown exception" << std::endl;
         }
+        return false;
     }
 
     static int RunTests(int argc, char* argv[]) {
@@ -136,8 +139,7 @@ struct TestFramework {
             std::cout << "Test not found" << std::endl;
             return 1;
         }
-        RunTest(test);
-        return 0;
+        return RunTest(test) ? 0 : 1;
     }
 };
 
@@ -155,8 +157,8 @@ struct TestFramework {
 #define _MicroSpec_RunCode_(symbol, code) \
     TestFramework::FunctionRunner _MicroSpec_UniqueSymbol_(symbol, _MicroSpec_UniqueSymbol_(TestRunner, __COUNTER__))([] { code; })
 #define Test(description) _MicroSpec_AddComponent_(add_test, _Test_, description, __FILE__, __LINE__, __COUNTER__)
-#define Setup() _MicroSpec_AddComponent_(add_setup, _Setup_, "", __FILE__, __LINE__, __COUNTER__)
-#define Teardown() _MicroSpec_AddComponent_(add_teardown, _Teardown_, "", __FILE__, __LINE__, __COUNTER__)
+#define Setup _MicroSpec_AddComponent_(add_setup, _Setup_, "", __FILE__, __LINE__, __COUNTER__)
+#define Teardown _MicroSpec_AddComponent_(add_teardown, _Teardown_, "", __FILE__, __LINE__, __COUNTER__)
 #define TestGroup(description) _MicroSpec_RunCode_(_MicroSpec_TestGroup_, TestFramework::TestRegistry::instance().define_group(description))
 #define EndTestGroup() _MicroSpec_RunCode_(_MicroSpec_EndTestGroup_, TestFramework::TestRegistry::instance().pop_group())
 #define Describe(description) \

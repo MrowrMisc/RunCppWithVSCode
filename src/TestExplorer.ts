@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { discoverTests, buildTestsProject, runTest, debugTest } from "./TestRunner";
+import { Test, TestComponentType } from "./TestTypes";
 import { getSpecsConfig } from "./SpecsConfig";
 
 const CONTROLLER_ID = "this._controller";
@@ -15,12 +16,7 @@ class TestExplorer {
             if (test) vscode.window.showErrorMessage("Resolving individual tests is not supported");
             else await this.refresh();
         };
-        this._controller.createRunProfile(
-            "Run",
-            vscode.TestRunProfileKind.Run,
-            this.run.bind(this),
-            true,
-        );
+        this._controller.createRunProfile("Run", vscode.TestRunProfileKind.Run, this.run.bind(this), true);
         getSpecsConfig().then((config) => {
             if (config?.debugCommand)
                 this._controller.createRunProfile(
@@ -52,21 +48,16 @@ class TestExplorer {
         }
 
         const discoveredTestIds = new Set<string>();
-        tests.forEach((test) => {
-            const id = `${test.filename}:${test.linenumber}`;
+        tests.forEach((testComponent) => {
+            if (testComponent.type !== TestComponentType.Test) return;
+            const test = testComponent as Test;
+            const id = `${test.filePath}:${test.lineNumber}`;
             discoveredTestIds.add(id);
-            const filePath = vscode.Uri.joinPath(
-                vscode.workspace.workspaceFolders![0].uri,
-                test.filename,
-            );
-            const vscodeTest = this._controller.createTestItem(
-                id,
-                test.description,
-                vscode.Uri.file(filePath.fsPath),
-            );
+            const filePath = vscode.Uri.joinPath(vscode.workspace.workspaceFolders![0].uri, test.filePath);
+            const vscodeTest = this._controller.createTestItem(id, test.description, vscode.Uri.file(filePath.fsPath));
             vscodeTest.range = new vscode.Range(
-                new vscode.Position(test.linenumber - 1, 0),
-                new vscode.Position(test.linenumber - 1, 0),
+                new vscode.Position(test.lineNumber - 1, 0),
+                new vscode.Position(test.lineNumber - 1, 0),
             );
             this._controller.items.add(vscodeTest);
         });

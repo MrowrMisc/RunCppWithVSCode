@@ -4,6 +4,7 @@ import * as vscode from "vscode";
 class SpecsConfigFile {
     public buildCommand: string | undefined = undefined;
     public discoveryCommand: string = "";
+    public discoverySeparator: string | undefined = undefined;
     public runCommand: string = "";
     public debugCommand: string | undefined = undefined;
 }
@@ -24,6 +25,7 @@ async function readSpecsConfigFile(): Promise<SpecsConfigFile | undefined> {
         const specsConfig = new SpecsConfigFile();
         specsConfig.buildCommand = config.build;
         specsConfig.discoveryCommand = config.discover;
+        specsConfig.discoverySeparator = config.separator;
         specsConfig.runCommand = config.run;
         specsConfig.debugCommand = config.debug;
         return specsConfig;

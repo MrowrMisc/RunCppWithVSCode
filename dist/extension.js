@@ -33,6 +33,7 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.RegisterSpecsTestExtension = void 0;
 const vscode = __importStar(__webpack_require__(2));
 const TestRunner_1 = __webpack_require__(3);
+const TestTypes_1 = __webpack_require__(6);
 const SpecsConfig_1 = __webpack_require__(5);
 const CONTROLLER_ID = "this._controller";
 const CONTROLLER_LABEL = "C++ Tests";
@@ -70,12 +71,15 @@ class TestExplorer {
             return;
         }
         const discoveredTestIds = new Set();
-        tests.forEach((test) => {
-            const id = `${test.filename}:${test.linenumber}`;
+        tests.forEach((testComponent) => {
+            if (testComponent.type !== TestTypes_1.TestComponentType.Test)
+                return;
+            const test = testComponent;
+            const id = `${test.filePath}:${test.lineNumber}`;
             discoveredTestIds.add(id);
-            const filePath = vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, test.filename);
+            const filePath = vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, test.filePath);
             const vscodeTest = this._controller.createTestItem(id, test.description, vscode.Uri.file(filePath.fsPath));
-            vscodeTest.range = new vscode.Range(new vscode.Position(test.linenumber - 1, 0), new vscode.Position(test.linenumber - 1, 0));
+            vscodeTest.range = new vscode.Range(new vscode.Position(test.lineNumber - 1, 0), new vscode.Position(test.lineNumber - 1, 0));
             this._controller.items.add(vscodeTest);
         });
         existingTestIds.forEach((id) => {
@@ -176,24 +180,7 @@ exports.discoverTests = exports.debugTest = exports.runTest = exports.buildTests
 const vscode = __importStar(__webpack_require__(2));
 const child_process = __importStar(__webpack_require__(4));
 const SpecsConfig_1 = __webpack_require__(5);
-class Test {
-    description;
-    filename;
-    linenumber;
-    constructor(description, filename, linenumber) {
-        this.description = description;
-        this.filename = filename;
-        this.linenumber = linenumber;
-    }
-}
-class TestResult {
-    testOutput;
-    testPassed;
-    constructor(testOutput = "", testPassed = false) {
-        this.testOutput = testOutput;
-        this.testPassed = testPassed;
-    }
-}
+const TestTypes_1 = __webpack_require__(6);
 class TestRunner {
     async build() {
         const specsConfig = await (0, SpecsConfig_1.getSpecsConfig)();
@@ -220,7 +207,7 @@ class TestRunner {
             vscode.window.showErrorMessage("No run command specified in specs.json");
             return;
         }
-        let testResult = new TestResult();
+        let testResult = new TestTypes_1.TestResult();
         const command = `${specsConfig.runCommand} "${filePath}" "${lineNumber}"`;
         return new Promise((resolve) => {
             const options = { cwd: vscode.workspace.workspaceFolders?.[0].uri.fsPath };
@@ -299,18 +286,14 @@ class TestRunner {
         });
     }
     parseTestLine(line) {
-        // The --list command will print out a list of all tests in the following format:
-        // Test/File/Path.cpp:lineNumber:Test Description
-        // Test/File/Path.cpp:lineNumber:Test Description 2
-        //
-        // Each test is printed on a separate line
+        // TODO: make regex configurable and use NAMED captures :)
         const regex = /(.+):(\d+):(.+)/;
         const matches = line.match(regex);
         if (matches && matches.length === 4) {
             const filePath = matches[1];
             const lineNumber = parseInt(matches[2]);
             const testDescription = matches[3];
-            return new Test(testDescription, filePath, lineNumber);
+            return new TestTypes_1.Test(testDescription, filePath, lineNumber);
         }
         return undefined;
     }
@@ -374,6 +357,7 @@ const vscode = __importStar(__webpack_require__(2));
 class SpecsConfigFile {
     buildCommand = undefined;
     discoveryCommand = "";
+    discoverySeparator = undefined;
     runCommand = "";
     debugCommand = undefined;
 }
@@ -393,6 +377,7 @@ async function readSpecsConfigFile() {
         const specsConfig = new SpecsConfigFile();
         specsConfig.buildCommand = config.build;
         specsConfig.discoveryCommand = config.discover;
+        specsConfig.discoverySeparator = config.separator;
         specsConfig.runCommand = config.run;
         specsConfig.debugCommand = config.debug;
         return specsConfig;
@@ -406,6 +391,63 @@ async function getSpecsConfig() {
     return await readSpecsConfigFile();
 }
 exports.getSpecsConfig = getSpecsConfig;
+
+
+/***/ }),
+/* 6 */
+/***/ ((__unused_webpack_module, exports) => {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.TestResult = exports.Test = exports.TestGroup = exports.TestComponentType = void 0;
+var TestComponentType;
+(function (TestComponentType) {
+    TestComponentType[TestComponentType["Test"] = 0] = "Test";
+    TestComponentType[TestComponentType["TestGroup"] = 1] = "TestGroup";
+})(TestComponentType || (exports.TestComponentType = TestComponentType = {}));
+class TestComponent {
+    type = TestComponentType.Test;
+    description;
+    group;
+    constructor(description, group = undefined) {
+        this.description = description;
+        this.group = group;
+    }
+    fullDescription() {
+        if (this.group)
+            return `${this.group.fullDescription()}.${this.description}`;
+        else
+            return this.description;
+    }
+}
+// Class TestGroup which inherits from TestComponent and additionally contains a list of children TestComponents
+class TestGroup extends TestComponent {
+    children = [];
+    constructor(description, group = undefined) {
+        super(description, group);
+    }
+}
+exports.TestGroup = TestGroup;
+// Class Test which inherits from TestComponent and additionally contains a file path and line number
+class Test extends TestComponent {
+    filePath;
+    lineNumber;
+    constructor(description, filePath, lineNumber, group = undefined) {
+        super(description, group);
+        this.filePath = filePath;
+        this.lineNumber = lineNumber;
+    }
+}
+exports.Test = Test;
+class TestResult {
+    testOutput;
+    testPassed;
+    constructor(testOutput = "", testPassed = false) {
+        this.testOutput = testOutput;
+        this.testPassed = testPassed;
+    }
+}
+exports.TestResult = TestResult;
 
 
 /***/ })
@@ -444,6 +486,8 @@ var exports = __webpack_exports__;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.deactivate = exports.activate = void 0;
 const TestExplorer_1 = __webpack_require__(1);
+// TODO: GROUPS!
+// TODO: TAGS!
 function activate(context) {
     (0, TestExplorer_1.RegisterSpecsTestExtension)(context);
 }

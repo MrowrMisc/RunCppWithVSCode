@@ -10,8 +10,6 @@
     "Other"
   ],
   "activationEvents": [
-    "workspaceContains:.specs.yml",
-    "workspaceContains:.specs.yaml",
     "workspaceContains:.specs.json"
   ],
   "main": "./dist/extension.js",

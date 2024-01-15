@@ -1,14 +1,7 @@
 import * as vscode from "vscode";
 import * as child_process from "child_process";
 import { getSpecsConfig } from "./SpecsConfig";
-
-class Test {
-    constructor(public description: string, public filename: string, public linenumber: number) {}
-}
-
-class TestResult {
-    constructor(public testOutput: string = "", public testPassed: boolean = false) {}
-}
+import { ITestComponent, Test, TestGroup, TestResult } from "./TestTypes";
 
 class TestRunner {
     public async build(): Promise<void> {
@@ -125,11 +118,7 @@ class TestRunner {
     }
 
     private parseTestLine(line: string): Test | undefined {
-        // The --list command will print out a list of all tests in the following format:
-        // Test/File/Path.cpp:lineNumber:Test Description
-        // Test/File/Path.cpp:lineNumber:Test Description 2
-        //
-        // Each test is printed on a separate line
+        // TODO: make regex configurable and use NAMED captures :)
         const regex = /(.+):(\d+):(.+)/;
         const matches = line.match(regex);
         if (matches && matches.length === 4) {
@@ -148,10 +137,7 @@ export async function buildTestsProject(): Promise<void> {
     await testRunner.build();
 }
 
-export async function runTest(
-    filePath: string,
-    lineNumber: number,
-): Promise<TestResult | undefined> {
+export async function runTest(filePath: string, lineNumber: number): Promise<TestResult | undefined> {
     return await testRunner.run(filePath, lineNumber);
 }
 
@@ -159,6 +145,6 @@ export async function debugTest(filePath: string, lineNumber: number) {
     testRunner.debug(filePath, lineNumber);
 }
 
-export async function discoverTests(): Promise<Test[] | undefined> {
+export async function discoverTests(): Promise<ITestComponent[] | undefined> {
     return await testRunner.discover();
 }
