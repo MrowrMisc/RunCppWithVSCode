@@ -5,6 +5,19 @@
 #include "TestRegistry.h"
 
 int main(int argc, char* argv[]) {
+    if (argc == 1) {
+        std::cout << "No arguments provided" << std::endl;
+        return 1;
+    }
+
+    if (argc == 2 && std::string(argv[1]) == "--list") {
+        auto& testRegistry = TestRegistry::instance();
+        for (const auto& [filename, fileTests] : testRegistry.tests())
+            for (const auto& [lineNumber, test] : fileTests)
+                std::cout << filename << ":" << lineNumber << ":" << test.description << std::endl;
+        return 0;
+    }
+
     // Expected arguments:
     // 0:
     // 1: path to test file
@@ -30,7 +43,7 @@ int main(int argc, char* argv[]) {
     // Run the test
     try {
         std::cout << "Running test [" << filename << ":" << lineNumber << "]" << std::endl;
-        test.value()();
+        test.value().test();
     } catch (const std::exception& e) {
         std::cout << "Test failed: " << e.what() << std::endl;
         return 1;

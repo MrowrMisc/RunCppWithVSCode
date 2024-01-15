@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { runCppOutputChannel } from "../output/runCppOutputChannel";
-import { XmakeTestRunner } from "../cppTestRunners/xmakeTestRunner";
+import { XmakeTestRunner } from "../cppTestAdapters/xmakeTestAdapter";
 
 export const runTestCommandId = "coolextension.runtest";
 
