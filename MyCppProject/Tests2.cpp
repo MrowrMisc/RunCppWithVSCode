@@ -2,4 +2,4 @@
 
 #include "TestFramework.h"
 
-Test("Test File 2 - A") { std::cout << "Hello from Test File 2 - A" << std::endl; }
+Test("Test File 2 - A") {}
