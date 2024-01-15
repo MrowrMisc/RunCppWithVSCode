@@ -1,6 +1,5 @@
 {
-    "configure": "xmake f -p windows -a x64 -m debug -v",
-    "build": "xmake build -w Foo",
+    "build": "xmake f -q -m debug && xmake build -w Foo",
     "discover": "xmake run -q Foo --list",
     "run": "xmake.exe run -q Foo",
     "debug": "build/windows/x64/debug/Foo.exe"
