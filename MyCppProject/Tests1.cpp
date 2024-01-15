@@ -1,4 +1,4 @@
-#define SPEC_GROUP Tests1
+#define SPEC_FILE Tests1
 
 #include "TestFramework.h"
 
@@ -18,4 +18,4 @@ Describe("Something") {
 }
 End
 
-Test("xxOUTSIDE") {}
+    Test("xxOUTSIDE") {}

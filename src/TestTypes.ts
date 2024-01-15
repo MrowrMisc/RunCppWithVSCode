@@ -21,7 +21,7 @@ class TestComponent implements ITestComponent {
     }
 
     public fullDescription(): string {
-        if (this.group) return `${this.group.fullDescription()}.${this.description}`;
+        if (this.group) return `${this.group.fullDescription()} > ${this.description}`;
         else return this.description;
     }
 }

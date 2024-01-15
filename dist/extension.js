@@ -57,6 +57,40 @@ class TestExplorer {
     registerController(context) {
         context.subscriptions.push(this._controller);
     }
+    registerTestComponent(discoveredIds, testComponent, parentTestItem) {
+        if (testComponent.type === TestTypes_1.TestComponentType.Test) {
+            const test = testComponent;
+            const id = `${test.filePath}:${test.lineNumber}`;
+            discoveredIds.add(id);
+            const filePath = vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, test.filePath);
+            const vscodeTest = this._controller.createTestItem(id, test.description, vscode.Uri.file(filePath.fsPath));
+            vscodeTest.range = new vscode.Range(new vscode.Position(test.lineNumber - 1, 0), new vscode.Position(test.lineNumber - 1, 0));
+            if (parentTestItem)
+                parentTestItem.children.add(vscodeTest);
+            else
+                this._controller.items.add(vscodeTest);
+        }
+        else if (testComponent.type === TestTypes_1.TestComponentType.TestGroup) {
+            const testGroup = testComponent;
+            if (testGroup.description === "") {
+                testGroup.children.forEach((child) => {
+                    this.registerTestComponent(discoveredIds, child, parentTestItem);
+                });
+            }
+            else {
+                const id = `group: ${testGroup.fullDescription()}`;
+                discoveredIds.add(id);
+                const vscodeTestGroup = this._controller.createTestItem(id, testGroup.description);
+                if (parentTestItem)
+                    parentTestItem.children.add(vscodeTestGroup);
+                else
+                    this._controller.items.add(vscodeTestGroup);
+                testGroup.children.forEach((child) => {
+                    this.registerTestComponent(discoveredIds, child, vscodeTestGroup);
+                });
+            }
+        }
+    }
     async refresh() {
         const existingTestIds = new Set();
         this._controller.items.forEach((test) => {
@@ -70,21 +104,19 @@ class TestExplorer {
             });
             return;
         }
-        const discoveredTestIds = new Set();
+        const discoveredIds = new Set();
         discoveredTestComponents.forEach((testComponent) => {
-            if (testComponent.type !== TestTypes_1.TestComponentType.Test)
-                return;
-            const test = testComponent;
-            const id = `${test.filePath}:${test.lineNumber}`;
-            discoveredTestIds.add(id);
-            const filePath = vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, test.filePath);
-            const vscodeTest = this._controller.createTestItem(id, test.description, vscode.Uri.file(filePath.fsPath));
-            vscodeTest.range = new vscode.Range(new vscode.Position(test.lineNumber - 1, 0), new vscode.Position(test.lineNumber - 1, 0));
-            this._controller.items.add(vscodeTest);
+            this.registerTestComponent(discoveredIds, testComponent);
         });
         existingTestIds.forEach((id) => {
-            if (!discoveredTestIds.has(id))
+            if (!discoveredIds.has(id))
                 this._controller.items.delete(id);
+        });
+    }
+    addTestsToRun(test, testsToRun) {
+        testsToRun.push(test);
+        test.children.forEach((child) => {
+            this.addTestsToRun(child, testsToRun);
         });
     }
     async run(request, token) {
@@ -93,17 +125,19 @@ class TestExplorer {
         const testsToRun = [];
         if (request.include)
             request.include.forEach((test) => {
-                testsToRun.push(test);
+                this.addTestsToRun(test, testsToRun);
             });
         else
             this._controller.items.forEach((test) => {
-                testsToRun.push(test);
+                this.addTestsToRun(test, testsToRun);
             });
         run.appendOutput(`Running ${testsToRun.length} tests\n`);
         while (testsToRun.length > 0 && !token.isCancellationRequested) {
             const test = testsToRun.pop();
             if (request.exclude?.includes(test))
                 continue;
+            if (test.id.startsWith("group:"))
+                continue; // or mark passed?
             const [filename, linenumber] = test.id.split(":");
             const start = Date.now();
             run.started(test);
@@ -290,13 +324,14 @@ class TestManager {
         if (matches && matches.groups) {
             const filePath = matches.groups.filepath;
             const lineNumber = parseInt(matches.groups.linenumber);
-            const testDescription = matches.groups.description;
+            const fullTestDescription = matches.groups.description;
             if (specsConfig.discoverySeparator) {
-                const testDescriptionParts = testDescription
+                const testDescriptionParts = fullTestDescription
                     .split(specsConfig.discoverySeparator)
                     .map((part) => part.trim());
-                if (testDescriptionParts.length === 1) {
-                    const test = new TestTypes_1.Test(testDescription.trim(), filePath, lineNumber);
+                const testDescription = testDescriptionParts.pop()?.trim();
+                if (testDescriptionParts.length === 0) {
+                    const test = new TestTypes_1.Test(testDescription, filePath, lineNumber);
                     rootTestGroup.children.push(test);
                     return;
                 }
@@ -309,11 +344,11 @@ class TestManager {
                     }
                     currentTestGroup = testGroup;
                 });
-                const test = new TestTypes_1.Test(testDescriptionParts[testDescriptionParts.length - 1], filePath, lineNumber, currentTestGroup);
+                const test = new TestTypes_1.Test(testDescription, filePath, lineNumber, currentTestGroup);
                 currentTestGroup.children.push(test);
             }
             else {
-                const test = new TestTypes_1.Test(testDescription.trim(), filePath, lineNumber);
+                const test = new TestTypes_1.Test(fullTestDescription.trim(), filePath, lineNumber);
                 rootTestGroup.children.push(test);
             }
         }
@@ -437,7 +472,7 @@ class TestComponent {
     }
     fullDescription() {
         if (this.group)
-            return `${this.group.fullDescription()}.${this.description}`;
+            return `${this.group.fullDescription()} > ${this.description}`;
         else
             return this.description;
     }

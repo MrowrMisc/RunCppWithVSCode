@@ -123,17 +123,20 @@ class TestManager {
         if (matches && matches.groups) {
             const filePath = matches.groups.filepath;
             const lineNumber = parseInt(matches.groups.linenumber);
-            const testDescription = matches.groups.description;
+            const fullTestDescription = matches.groups.description;
             if (specsConfig.discoverySeparator) {
-                const testDescriptionParts = testDescription
+                const testDescriptionParts = fullTestDescription
                     .split(specsConfig.discoverySeparator)
                     .map((part) => part.trim());
 
-                if (testDescriptionParts.length === 1) {
-                    const test = new Test(testDescription.trim(), filePath, lineNumber);
+                const testDescription = testDescriptionParts.pop()?.trim()!;
+
+                if (testDescriptionParts.length === 0) {
+                    const test = new Test(testDescription, filePath, lineNumber);
                     rootTestGroup.children.push(test);
                     return;
                 }
+
                 let currentTestGroup = rootTestGroup;
                 testDescriptionParts.forEach((testGroupDescription) => {
                     let testGroup = currentTestGroup.children.find(
@@ -145,15 +148,12 @@ class TestManager {
                     }
                     currentTestGroup = testGroup as TestGroup;
                 });
-                const test = new Test(
-                    testDescriptionParts[testDescriptionParts.length - 1],
-                    filePath,
-                    lineNumber,
-                    currentTestGroup,
-                );
+
+                const test = new Test(testDescription, filePath, lineNumber, currentTestGroup);
+
                 currentTestGroup.children.push(test);
             } else {
-                const test = new Test(testDescription.trim(), filePath, lineNumber);
+                const test = new Test(fullTestDescription.trim(), filePath, lineNumber);
                 rootTestGroup.children.push(test);
             }
         }

@@ -20,7 +20,7 @@ struct TestFramework {
         unsigned int          line_number;
         std::function<void()> fn;
         std::string           full_description() const {
-            if (group && !group->is_root()) return group->full_description() + " > " + description;
+            if (group) return group->full_description() + " > " + description;
             else return description;
         }
     };

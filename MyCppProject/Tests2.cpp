@@ -2,7 +2,7 @@
 
 #include "TestFramework.h"
 
-Test("Test 1") { throw "Kaboom!"; }
+Test("Test 1") {}
 
 TestGroup("xxBar");
 

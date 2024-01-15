@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { discoverTests, buildTestsProject, runTest, debugTest } from "./TestManager";
-import { Test, TestComponentType } from "./TestTypes";
+import { ITestComponent, Test, TestComponentType, TestGroup } from "./TestTypes";
 import { getSpecsConfig } from "./SpecsConfig";
 
 const CONTROLLER_ID = "specs-test-explorer";
@@ -32,6 +32,42 @@ class TestExplorer {
         context.subscriptions.push(this._controller);
     }
 
+    private registerTestComponent(
+        discoveredIds: Set<string>,
+        testComponent: ITestComponent,
+        parentTestItem?: vscode.TestItem,
+    ) {
+        if (testComponent.type === TestComponentType.Test) {
+            const test = testComponent as Test;
+            const id = `${test.filePath}:${test.lineNumber}`;
+            discoveredIds.add(id);
+            const filePath = vscode.Uri.joinPath(vscode.workspace.workspaceFolders![0].uri, test.filePath);
+            const vscodeTest = this._controller.createTestItem(id, test.description, vscode.Uri.file(filePath.fsPath));
+            vscodeTest.range = new vscode.Range(
+                new vscode.Position(test.lineNumber - 1, 0),
+                new vscode.Position(test.lineNumber - 1, 0),
+            );
+            if (parentTestItem) parentTestItem.children.add(vscodeTest);
+            else this._controller.items.add(vscodeTest);
+        } else if (testComponent.type === TestComponentType.TestGroup) {
+            const testGroup = testComponent as TestGroup;
+            if (testGroup.description === "") {
+                testGroup.children.forEach((child) => {
+                    this.registerTestComponent(discoveredIds, child, parentTestItem);
+                });
+            } else {
+                const id = `group: ${testGroup.fullDescription()}`;
+                discoveredIds.add(id);
+                const vscodeTestGroup = this._controller.createTestItem(id, testGroup.description);
+                if (parentTestItem) parentTestItem.children.add(vscodeTestGroup);
+                else this._controller.items.add(vscodeTestGroup);
+                testGroup.children.forEach((child) => {
+                    this.registerTestComponent(discoveredIds, child, vscodeTestGroup);
+                });
+            }
+        }
+    }
+
     async refresh() {
         const existingTestIds = new Set<string>();
         this._controller.items.forEach((test) => {
@@ -47,23 +83,21 @@ class TestExplorer {
             return;
         }
 
-        const discoveredTestIds = new Set<string>();
+        const discoveredIds = new Set<string>();
+
         discoveredTestComponents.forEach((testComponent) => {
-            if (testComponent.type !== TestComponentType.Test) return;
-            const test = testComponent as Test;
-            const id = `${test.filePath}:${test.lineNumber}`;
-            discoveredTestIds.add(id);
-            const filePath = vscode.Uri.joinPath(vscode.workspace.workspaceFolders![0].uri, test.filePath);
-            const vscodeTest = this._controller.createTestItem(id, test.description, vscode.Uri.file(filePath.fsPath));
-            vscodeTest.range = new vscode.Range(
-                new vscode.Position(test.lineNumber - 1, 0),
-                new vscode.Position(test.lineNumber - 1, 0),
-            );
-            this._controller.items.add(vscodeTest);
+            this.registerTestComponent(discoveredIds, testComponent);
         });
 
         existingTestIds.forEach((id) => {
-            if (!discoveredTestIds.has(id)) this._controller.items.delete(id);
+            if (!discoveredIds.has(id)) this._controller.items.delete(id);
+        });
+    }
+
+    addTestsToRun(test: vscode.TestItem, testsToRun: vscode.TestItem[]) {
+        testsToRun.push(test);
+        test.children.forEach((child) => {
+            this.addTestsToRun(child, testsToRun);
         });
     }
 
@@ -75,11 +109,11 @@ class TestExplorer {
 
         if (request.include)
             request.include.forEach((test) => {
-                testsToRun.push(test);
+                this.addTestsToRun(test, testsToRun);
             });
         else
             this._controller.items.forEach((test) => {
-                testsToRun.push(test);
+                this.addTestsToRun(test, testsToRun);
             });
 
         run.appendOutput(`Running ${testsToRun.length} tests\n`);
@@ -88,6 +122,8 @@ class TestExplorer {
             const test = testsToRun.pop()!;
 
             if (request.exclude?.includes(test)) continue;
+
+            if (test.id.startsWith("group:")) continue; // or mark passed?
 
             const [filename, linenumber] = test.id.split(":");
 
