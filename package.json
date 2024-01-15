@@ -10,7 +10,9 @@
     "Other"
   ],
   "activationEvents": [
-    "onLanguage:cpp"
+    "workspaceContains:.specs.yml",
+    "workspaceContains:.specs.yaml",
+    "workspaceContains:.specs.json"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -18,11 +20,6 @@
       {
         "command": "coolextension.runtest",
         "title": "Run C++ Test"
-      }
-    ],
-    "codeLensProvider": [
-      {
-        "language": "cpp"
       }
     ]
   },

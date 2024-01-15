@@ -1,16 +1,25 @@
-import { ITestAdapter, TestResult, Test } from "./testRunner";
 import * as vscode from "vscode";
 import * as child_process from "child_process";
+import { getSpecsConfig } from "./specsConfigFile";
 
-export class XmakeTestRunner implements ITestAdapter {
-    public async buildTestTarget(): Promise<void> {
-        const command = `xmake build -y -w Tests`;
+class Test {
+    constructor(public description: string, public filename: string, public linenumber: number) {}
+}
+
+class TestResult {
+    constructor(public testOutput: string = "", public testPassed: boolean = false) {}
+}
+
+class TestRunner {
+    public async build(): Promise<void> {
+        const specsConfig = await getSpecsConfig();
+        if (!specsConfig?.buildCommand) return;
+
+        const command = specsConfig.buildCommand;
         const options = { cwd: vscode.workspace.workspaceFolders?.[0].uri.fsPath };
 
-        return new Promise((resolve, reject) => {
-            const child = child_process.exec(command, options, (error) => {
-                if (error) reject(error);
-            });
+        return new Promise((resolve) => {
+            const child = child_process.exec(command, options);
             child.stdout?.on("data", (data) => {
                 console.log(data);
             });
@@ -23,13 +32,16 @@ export class XmakeTestRunner implements ITestAdapter {
         });
     }
 
-    public async runTest(filePath: string, lineNumber: number): Promise<TestResult> {
+    public async run(filePath: string, lineNumber: number): Promise<TestResult | undefined> {
+        const specsConfig = await getSpecsConfig();
+        if (!specsConfig?.runCommand) return;
+
         let testResult: TestResult = new TestResult();
 
-        const command = `xmake run -q Tests "${filePath}" "${lineNumber}"`;
+        const command = `${specsConfig.runCommand} "${filePath}" "${lineNumber}"`;
         const options = { cwd: vscode.workspace.workspaceFolders?.[0].uri.fsPath };
 
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
             const child = child_process.exec(command, options, (error) => {
                 if (error) testResult.testPassed = false;
             });
@@ -46,8 +58,16 @@ export class XmakeTestRunner implements ITestAdapter {
         });
     }
 
-    public async discoverTests(): Promise<Test[]> {
-        const command = `xmake run Tests --list`;
+    public async discover(): Promise<Test[] | undefined> {
+        await this.build();
+
+        const specsConfig = await getSpecsConfig();
+        if (!specsConfig?.discoveryCommand) {
+            vscode.window.showErrorMessage("No discovery command specified in specs.json");
+            return;
+        }
+
+        const command = specsConfig.discoveryCommand;
         const options = { cwd: vscode.workspace.workspaceFolders?.[0].uri.fsPath };
 
         return new Promise((resolve, reject) => {
@@ -85,4 +105,18 @@ export class XmakeTestRunner implements ITestAdapter {
         }
         return undefined;
     }
+}
+
+const testRunner = new TestRunner();
+
+export async function buildTestsProject(): Promise<void> {
+    await testRunner.build();
+}
+
+export async function runTest(filePath: string, lineNumber: number): Promise<TestResult | undefined> {
+    return await testRunner.run(filePath, lineNumber);
+}
+
+export async function discoverTests(): Promise<Test[] | undefined> {
+    return await testRunner.discover();
 }

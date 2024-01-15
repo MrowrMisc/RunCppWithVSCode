@@ -1,0 +1,5 @@
+{
+    "build": "xmake build -w \"Tests Name Changed\"",
+    "discover": "xmake run -q \"Tests Name Changed\" --list",
+    "run": "xmake run -q \"Tests Name Changed\""
+}
