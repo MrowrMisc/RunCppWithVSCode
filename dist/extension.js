@@ -351,6 +351,7 @@ async function discoverTests() {
                 const id = `${test.filename}:${test.linenumber}`;
                 const filePath = vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, test.filename);
                 const vscodeTest = exports.cppTestController.createTestItem(id, test.description, vscode.Uri.file(filePath.fsPath));
+                vscodeTest.range = new vscode.Range(new vscode.Position(test.linenumber - 1, 0), new vscode.Position(test.linenumber - 1, 0));
                 exports.cppTestController.items.add(vscodeTest);
             });
             resolve();

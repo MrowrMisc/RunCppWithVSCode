@@ -4,7 +4,7 @@
 #include "TestMacro.h"
 
 Test("Test 1") {
-    throw "Kaboom!";
+    // throw "Kaboom!";
     std::cout << "Hello from Test 1" << std::endl;
 }
 

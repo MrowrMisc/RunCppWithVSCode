@@ -18,6 +18,10 @@ async function discoverTests(): Promise<void> {
                     test.description,
                     vscode.Uri.file(filePath.fsPath)
                 );
+                vscodeTest.range = new vscode.Range(
+                    new vscode.Position(test.linenumber - 1, 0),
+                    new vscode.Position(test.linenumber - 1, 0)
+                );
                 cppTestController.items.add(vscodeTest);
             });
             resolve();
