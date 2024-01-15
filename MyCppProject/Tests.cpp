@@ -3,8 +3,11 @@
 #include "Entrypoint.h"  // IWYU pragma: keep
 #include "TestMacro.h"
 
-Test("Test 1") { std::cout << "Hello from Test 1" << std::endl; }
+Test("Test 1") {
+    throw "Kaboom!";
+    std::cout << "Hello from Test 1" << std::endl;
+}
 
-Test("Test 2") { std::cout << "Hello from Test 2" << std::endl; }
+Test("Test 2??") { std::cout << "Hello from Test 2" << std::endl; }
 
-Test("Test 3") { std::cout << "Hello from Test 3" << std::endl; }
+Test("Test 3?") { std::cout << "Hello from Test 3" << std::endl; }

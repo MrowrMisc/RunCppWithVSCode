@@ -42,7 +42,6 @@ int main(int argc, char* argv[]) {
 
     // Run the test
     try {
-        std::cout << "Running test [" << filename << ":" << lineNumber << "]" << std::endl;
         test.value().test();
     } catch (const std::exception& e) {
         std::cout << "Test failed: " << e.what() << std::endl;

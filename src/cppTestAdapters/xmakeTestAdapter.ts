@@ -26,16 +26,12 @@ export class XmakeTestRunner implements ITestAdapter {
     public async runTest(filePath: string, lineNumber: number): Promise<TestResult> {
         let testResult: TestResult = new TestResult();
 
-        const command = `xmake run Tests "${filePath}" "${lineNumber}"`;
+        const command = `xmake run -q Tests "${filePath}" "${lineNumber}"`;
         const options = { cwd: vscode.workspace.workspaceFolders?.[0].uri.fsPath };
 
         return new Promise((resolve, reject) => {
             const child = child_process.exec(command, options, (error) => {
-                if (error) {
-                    testResult.testOutput += error.message;
-                    testResult.testPassed = false;
-                    resolve(testResult);
-                }
+                if (error) testResult.testPassed = false;
             });
             child.stdout?.on("data", (data) => {
                 testResult.testOutput += data;
