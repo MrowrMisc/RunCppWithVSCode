@@ -34,6 +34,7 @@ exports.registerCppTestController = void 0;
 const vscode = __importStar(__webpack_require__(2));
 const runCppOutputChannel_1 = __webpack_require__(3);
 const testRunner_1 = __webpack_require__(4);
+const specsConfigFile_1 = __webpack_require__(6);
 const cppTestController = vscode.tests.createTestController("cppTestController", "C++ Tests");
 function registerCppTestController(context) {
     context.subscriptions.push(cppTestController);
@@ -80,7 +81,23 @@ cppTestController.refreshHandler = async () => {
     await (0, testRunner_1.buildTestsProject)();
     await discover();
 };
-async function runHandler(shouldDebug, request, token) {
+async function runHandler(debug, request, token) {
+    if (debug) {
+        const debugAll = request.include === undefined;
+        if (debugAll) {
+            vscode.window.showErrorMessage("Debug all tests is not supported");
+            return;
+        }
+        if (request.include.length > 1) {
+            vscode.window.showErrorMessage("Debugging multiple tests is not supported");
+            return;
+        }
+        const test = request.include[0];
+        const [filename, linenumber] = test.id.split(":");
+        await (0, testRunner_1.buildTestsProject)();
+        await (0, testRunner_1.debugTest)(filename, parseInt(linenumber));
+        return;
+    }
     const run = cppTestController.createTestRun(request);
     await (0, testRunner_1.buildTestsProject)();
     const testsToRun = [];
@@ -105,7 +122,7 @@ async function runHandler(shouldDebug, request, token) {
         // const filePath = vscode.Uri.joinPath(vscode.workspace.workspaceFolders![0].uri, filename);
         const start = Date.now();
         run.started(test);
-        const testResult = await (0, testRunner_1.runTest)(filename, parseInt(linenumber));
+        const testResult = await (0, testRunner_1.runTest)(filename, parseInt(linenumber), debug);
         if (!testResult)
             continue;
         const duration = Date.now() - start;
@@ -122,9 +139,15 @@ async function runHandler(shouldDebug, request, token) {
     }
     run.end();
 }
-const cppRunTestProfile = cppTestController.createRunProfile("Run Tests", vscode.TestRunProfileKind.Run, (request, token) => {
+cppTestController.createRunProfile("Run", vscode.TestRunProfileKind.Run, (request, token) => {
     runHandler(false, request, token);
 }, true);
+(0, specsConfigFile_1.getSpecsConfig)().then((config) => {
+    if (config?.debugCommand)
+        cppTestController.createRunProfile("Debug", vscode.TestRunProfileKind.Debug, (request, token) => {
+            runHandler(true, request, token);
+        }, true);
+});
 
 
 /***/ }),
@@ -197,7 +220,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.discoverTests = exports.runTest = exports.buildTestsProject = void 0;
+exports.discoverTests = exports.debugTest = exports.runTest = exports.buildTestsProject = void 0;
 const vscode = __importStar(__webpack_require__(2));
 const child_process = __importStar(__webpack_require__(5));
 const specsConfigFile_1 = __webpack_require__(6);
@@ -241,12 +264,14 @@ class TestRunner {
     }
     async run(filePath, lineNumber) {
         const specsConfig = await (0, specsConfigFile_1.getSpecsConfig)();
-        if (!specsConfig?.runCommand)
+        if (!specsConfig?.runCommand) {
+            vscode.window.showErrorMessage("No run command specified in specs.json");
             return;
+        }
         let testResult = new TestResult();
         const command = `${specsConfig.runCommand} "${filePath}" "${lineNumber}"`;
-        const options = { cwd: vscode.workspace.workspaceFolders?.[0].uri.fsPath };
         return new Promise((resolve) => {
+            const options = { cwd: vscode.workspace.workspaceFolders?.[0].uri.fsPath };
             const child = child_process.exec(command, options, (error) => {
                 if (error)
                     testResult.testPassed = false;
@@ -261,6 +286,35 @@ class TestRunner {
                 testResult.testPassed = code === 0;
                 resolve(testResult);
             });
+        });
+    }
+    async debug(filePath, lineNumber) {
+        const specsConfig = await (0, specsConfigFile_1.getSpecsConfig)();
+        if (!specsConfig?.debugCommand) {
+            vscode.window.showErrorMessage("No debug command specified in specs.json");
+            return;
+        }
+        // TODO: rename from 'debugCommand'
+        const debugExecutable = specsConfig.debugCommand;
+        vscode.debug.startDebugging(vscode.workspace.workspaceFolders?.[0], {
+            name: "Debug Test",
+            type: "cppvsdbg",
+            request: "launch",
+            program: debugExecutable,
+            args: [filePath, lineNumber.toString()],
+            // stopAtEntry: false,
+            cwd: "${workspaceFolder}",
+            environment: [],
+            // externalConsole: false,
+            // MIMode: "gdb",
+            // miDebuggerPath: "/usr/bin/gdb",
+            // setupCommands: [
+            //     {
+            //         description: "Enable pretty-printing for gdb",
+            //         text: "-enable-pretty-printing",
+            //         ignoreFailures: true,
+            //     },
+            // ],
         });
     }
     async discover() {
@@ -314,10 +368,14 @@ async function buildTestsProject() {
     await testRunner.build();
 }
 exports.buildTestsProject = buildTestsProject;
-async function runTest(filePath, lineNumber) {
+async function runTest(filePath, lineNumber, debug = false) {
     return await testRunner.run(filePath, lineNumber);
 }
 exports.runTest = runTest;
+async function debugTest(filePath, lineNumber) {
+    testRunner.debug(filePath, lineNumber);
+}
+exports.debugTest = debugTest;
 async function discoverTests() {
     return await testRunner.discover();
 }
@@ -365,6 +423,7 @@ class SpecsConfigFile {
     buildCommand = undefined;
     discoveryCommand = "";
     runCommand = "";
+    debugCommand = undefined;
 }
 async function readSpecsConfigFile() {
     const file = await vscode.workspace.findFiles(specConfigFileName);
@@ -380,9 +439,10 @@ async function readSpecsConfigFile() {
             return;
         }
         const specsConfig = new SpecsConfigFile();
-        specsConfig.runCommand = config.run;
         specsConfig.buildCommand = config.build;
         specsConfig.discoveryCommand = config.discover;
+        specsConfig.runCommand = config.run;
+        specsConfig.debugCommand = config.debug;
         return specsConfig;
     }
     else {
@@ -390,11 +450,8 @@ async function readSpecsConfigFile() {
     }
 }
 const specConfigFileName = ".specs.json";
-let currentSpecsConfig = undefined;
 async function getSpecsConfig() {
-    if (!currentSpecsConfig)
-        currentSpecsConfig = await readSpecsConfigFile();
-    return currentSpecsConfig;
+    return await readSpecsConfigFile();
 }
 exports.getSpecsConfig = getSpecsConfig;
 

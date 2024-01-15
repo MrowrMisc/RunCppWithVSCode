@@ -34,14 +34,17 @@ class TestRunner {
 
     public async run(filePath: string, lineNumber: number): Promise<TestResult | undefined> {
         const specsConfig = await getSpecsConfig();
-        if (!specsConfig?.runCommand) return;
+        if (!specsConfig?.runCommand) {
+            vscode.window.showErrorMessage("No run command specified in specs.json");
+            return;
+        }
 
         let testResult: TestResult = new TestResult();
 
         const command = `${specsConfig.runCommand} "${filePath}" "${lineNumber}"`;
-        const options = { cwd: vscode.workspace.workspaceFolders?.[0].uri.fsPath };
 
         return new Promise((resolve) => {
+            const options = { cwd: vscode.workspace.workspaceFolders?.[0].uri.fsPath };
             const child = child_process.exec(command, options, (error) => {
                 if (error) testResult.testPassed = false;
             });
@@ -55,6 +58,38 @@ class TestRunner {
                 testResult.testPassed = code === 0;
                 resolve(testResult);
             });
+        });
+    }
+
+    public async debug(filePath: string, lineNumber: number) {
+        const specsConfig = await getSpecsConfig();
+        if (!specsConfig?.debugCommand) {
+            vscode.window.showErrorMessage("No debug command specified in specs.json");
+            return;
+        }
+
+        // TODO: rename from 'debugCommand'
+        const debugExecutable = specsConfig.debugCommand;
+
+        vscode.debug.startDebugging(vscode.workspace.workspaceFolders?.[0], {
+            name: "Debug Test",
+            type: "cppvsdbg",
+            request: "launch",
+            program: debugExecutable,
+            args: [filePath, lineNumber.toString()],
+            // stopAtEntry: false,
+            cwd: "${workspaceFolder}",
+            environment: [],
+            // externalConsole: false,
+            // MIMode: "gdb",
+            // miDebuggerPath: "/usr/bin/gdb",
+            // setupCommands: [
+            //     {
+            //         description: "Enable pretty-printing for gdb",
+            //         text: "-enable-pretty-printing",
+            //         ignoreFailures: true,
+            //     },
+            // ],
         });
     }
 
@@ -113,8 +148,16 @@ export async function buildTestsProject(): Promise<void> {
     await testRunner.build();
 }
 
-export async function runTest(filePath: string, lineNumber: number): Promise<TestResult | undefined> {
+export async function runTest(
+    filePath: string,
+    lineNumber: number,
+    debug: boolean = false
+): Promise<TestResult | undefined> {
     return await testRunner.run(filePath, lineNumber);
+}
+
+export async function debugTest(filePath: string, lineNumber: number) {
+    testRunner.debug(filePath, lineNumber);
 }
 
 export async function discoverTests(): Promise<Test[] | undefined> {

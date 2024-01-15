@@ -1,6 +1,8 @@
 import * as vscode from "vscode";
 import { runCppOutputChannel } from "./runCppOutputChannel";
-import { discoverTests, buildTestsProject, runTest } from "./testRunner";
+import { discoverTests, buildTestsProject, runTest, debugTest } from "./testRunner";
+import { get } from "node:http";
+import { getSpecsConfig } from "./specsConfigFile";
 
 const cppTestController = vscode.tests.createTestController("cppTestController", "C++ Tests");
 
@@ -57,7 +59,28 @@ cppTestController.refreshHandler = async () => {
     await discover();
 };
 
-async function runHandler(shouldDebug: boolean, request: vscode.TestRunRequest, token: vscode.CancellationToken) {
+async function runHandler(debug: boolean, request: vscode.TestRunRequest, token: vscode.CancellationToken) {
+    if (debug) {
+        const debugAll = request.include === undefined;
+        if (debugAll) {
+            vscode.window.showErrorMessage("Debug all tests is not supported");
+            return;
+        }
+
+        if (request.include.length > 1) {
+            vscode.window.showErrorMessage("Debugging multiple tests is not supported");
+            return;
+        }
+
+        const test = request.include[0];
+        const [filename, linenumber] = test.id.split(":");
+
+        await buildTestsProject();
+        await debugTest(filename, parseInt(linenumber));
+
+        return;
+    }
+
     const run = cppTestController.createTestRun(request);
 
     await buildTestsProject();
@@ -90,7 +113,7 @@ async function runHandler(shouldDebug: boolean, request: vscode.TestRunRequest, 
 
         const start = Date.now();
         run.started(test);
-        const testResult = await runTest(filename, parseInt(linenumber));
+        const testResult = await runTest(filename, parseInt(linenumber), debug);
         if (!testResult) continue;
 
         const duration = Date.now() - start;
@@ -107,11 +130,23 @@ async function runHandler(shouldDebug: boolean, request: vscode.TestRunRequest, 
     run.end();
 }
 
-const cppRunTestProfile = cppTestController.createRunProfile(
-    "Run Tests",
+cppTestController.createRunProfile(
+    "Run",
     vscode.TestRunProfileKind.Run,
     (request, token) => {
         runHandler(false, request, token);
     },
     true
 );
+
+getSpecsConfig().then((config) => {
+    if (config?.debugCommand)
+        cppTestController.createRunProfile(
+            "Debug",
+            vscode.TestRunProfileKind.Debug,
+            (request, token) => {
+                runHandler(true, request, token);
+            },
+            true
+        );
+});

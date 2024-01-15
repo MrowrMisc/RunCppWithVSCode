@@ -5,6 +5,7 @@ class SpecsConfigFile {
     public buildCommand: string | undefined = undefined;
     public discoveryCommand: string = "";
     public runCommand: string = "";
+    public debugCommand: string | undefined = undefined;
 }
 
 async function readSpecsConfigFile(): Promise<SpecsConfigFile | undefined> {
@@ -21,9 +22,10 @@ async function readSpecsConfigFile(): Promise<SpecsConfigFile | undefined> {
             return;
         }
         const specsConfig = new SpecsConfigFile();
-        specsConfig.runCommand = config.run;
         specsConfig.buildCommand = config.build;
         specsConfig.discoveryCommand = config.discover;
+        specsConfig.runCommand = config.run;
+        specsConfig.debugCommand = config.debug;
         return specsConfig;
     } else {
         vscode.window.showErrorMessage("No specs config file found");
@@ -31,9 +33,7 @@ async function readSpecsConfigFile(): Promise<SpecsConfigFile | undefined> {
 }
 
 const specConfigFileName = ".specs.json";
-let currentSpecsConfig: SpecsConfigFile | undefined = undefined;
 
 export async function getSpecsConfig(): Promise<SpecsConfigFile | undefined> {
-    if (!currentSpecsConfig) currentSpecsConfig = await readSpecsConfigFile();
-    return currentSpecsConfig;
+    return await readSpecsConfigFile();
 }
