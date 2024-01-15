@@ -1,3 +1,5 @@
+#define SPEC_FILE Tests2
+
 #include "TestFramework.h"
 
-Test("Test 2") {}
+Test("Test File 2 - A") { std::cout << "Hello from Test File 2 - A" << std::endl; }

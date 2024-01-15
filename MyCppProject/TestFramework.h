@@ -2,107 +2,115 @@
 
 #include <functional>
 #include <iostream>
-#include <optional>
 #include <string>
 #include <unordered_map>
 
+struct TestFramework {
+    struct TestInfo {
+        std::string           description;
+        std::string           filename;
+        unsigned int          line_number;
+        std::function<void()> test;
+    };
 
-struct TestInfo {
-    std::string           description;
-    std::string           filename;
-    unsigned int          line_number;
-    std::function<void()> test;
-};
+    class TestRegistry {
+        // Map filename => line number => TestInfo
+        std::unordered_map<std::string, std::unordered_map<unsigned int, TestInfo>> _tests;
 
-class TestRegistry {
-    // Map filename => line number => TestInfo
-    std::unordered_map<std::string, std::unordered_map<unsigned int, TestInfo>> _tests;
+    public:
+        static TestRegistry& instance() {
+            static TestRegistry instance;
+            return instance;
+        }
 
-public:
-    static TestRegistry& instance() {
-        static TestRegistry instance;
-        return instance;
+        void add_test(
+            const std::string& description, const std::string& filename, unsigned int line,
+            std::function<void()> test
+        ) {
+            _tests[filename][line] = TestInfo{description, filename, line, test};
+        }
+
+        std::unordered_map<std::string, std::unordered_map<unsigned int, TestInfo>>& tests() {
+            return _tests;
+        }
+
+        TestInfo* find_test(const std::string& filename, unsigned int line) {
+            auto file = _tests.find(filename);
+            if (file == _tests.end()) return nullptr;
+            auto line_number = file->second.find(line);
+            if (line_number == file->second.end()) return nullptr;
+            return &line_number->second;
+        }
+    };
+
+    struct FunctionRunner {
+        FunctionRunner(std::function<void()> f) { f(); }
+    };
+
+    static void ForEachTest(std::function<void(const TestInfo&)> f) {
+        auto& testRegistry = TestFramework::TestRegistry::instance();
+        for (const auto& filename_fileTests : testRegistry.tests()) {
+            for (const auto& lineNumber_test : filename_fileTests.second) {
+                f(lineNumber_test.second);
+            }
+        }
     }
 
-    void add_test(
-        const std::string& description, const std::string& filename, unsigned int line,
-        std::function<void()> test
-    ) {
-        _tests[filename][line] = TestInfo{description, filename, line, test};
+    static void RunTest(const TestInfo& test) {
+        try {
+            test.test();
+        } catch (const std::exception& e) {
+            std::cout << test.filename << ":" << test.line_number << ": " << e.what() << std::endl;
+        } catch (const char* e) {
+            std::cout << test.filename << ":" << test.line_number << ": " << e << std::endl;
+        } catch (...) {
+            std::cout << test.filename << ":" << test.line_number << ": unknown exception"
+                      << std::endl;
+        }
     }
 
-    std::unordered_map<std::string, std::unordered_map<unsigned int, TestInfo>>& tests() {
-        return _tests;
-    }
+    static int RunTests(int argc, char* argv[]) {
+        auto& testRegistry = TestFramework::TestRegistry::instance();
 
-    std::optional<TestInfo> find_test(const std::string& filename, unsigned int line) {
-        auto file = _tests.find(filename);
-        if (file == _tests.end()) return std::nullopt;
-        auto line_number = file->second.find(line);
-        if (line_number == file->second.end()) return std::nullopt;
-        return line_number->second;
-    }
-};
+        if (argc == 1) {
+            // Run all tests
+            ForEachTest([](const TestInfo& test) {
+                std::cout << test.description << std::endl;
+                RunTest(test);
+            });
+            return 0;
+        }
 
-// main()
+        if (argc == 2 && std::string(argv[1]) == "--list") {
+            // List all tests (and their file name and line number)
+            ForEachTest([](const TestInfo& test) {
+                std::cout << test.filename << ":" << test.line_number << ": " << test.description
+                          << std::endl;
+            });
+            return 0;
+        }
 
-int RunTests(int argc, char* argv[]) {
-    if (argc == 1) {
-        std::cout << "No arguments provided" << std::endl;
-        return 1;
-    }
+        // Expected arguments: 0: 1: path to test file 2: line number of test
+        if (argc != 3) {
+            std::cout << "Invalid number of arguments" << std::endl;
+            return 1;
+        }
 
-    if (argc == 2 && std::string(argv[1]) == "--list") {
-        auto& testRegistry = TestRegistry::instance();
-        for (const auto& [filename, fileTests] : testRegistry.tests())
-            for (const auto& [lineNumber, test] : fileTests)
-                std::cout << filename << ":" << lineNumber << ":" << test.description << std::endl;
+        auto filename   = std::string(argv[1]);
+        auto lineNumber = std::stoi(argv[2]);
+
+        // Find the test in the registry
+        auto* test = testRegistry.find_test(filename, lineNumber);
+        if (!test) {
+            std::cout << "Test not found" << std::endl;
+            return 1;
+        }
+
+        // Run the test
+        RunTest(*test);
+
         return 0;
     }
-
-    // Expected arguments:
-    // 0:
-    // 1: path to test file
-    // 2: line number of test
-    if (argc != 3) {
-        std::cout << "Invalid number of arguments" << std::endl;
-        return 1;
-    }
-
-    auto& testRegistry = TestRegistry::instance();
-
-    auto filename   = std::string(argv[1]);
-    auto lineNumber = std::stoi(argv[2]);
-
-    // Find the test in the registry
-    auto test = testRegistry.find_test(filename, lineNumber);
-
-    if (!test) {
-        std::cout << "Test not found" << std::endl;
-        return 1;
-    }
-
-    // Run the test
-    try {
-        test.value().test();
-    } catch (const std::exception& e) {
-        std::cout << "Test failed: " << e.what() << std::endl;
-        return 1;
-    } catch (const char* e) {
-        std::cout << "Test failed: " << e << std::endl;
-        return 1;
-    } catch (...) {
-        std::cout << "Test failed: unknown exception" << std::endl;
-        return 1;
-    }
-
-    return 0;
-}
-
-// Macros
-
-struct FunctionRunner {
-    FunctionRunner(std::function<void()> f) { f(); }
 };
 
 #define _MicroSpec_Concat_Core_(x, y) x##y
@@ -118,12 +126,12 @@ struct FunctionRunner {
     _MicroSpec_Concat_(prefix, _MicroSpec_Concat_(_MicroSpec_CompilationUnit_, count))
 
 #define _MicroSpec_AddTest_(description, filename, linenumber, count)                \
-    void           _MicroSpec_UniqueSymbol_(Test, count)();                          \
-    FunctionRunner _MicroSpec_UniqueSymbol_(TestRunner, count)([] {                  \
-        TestRegistry::instance().add_test(                                           \
+    void                          _MicroSpec_UniqueSymbol_(Test, count)();           \
+    TestFramework::FunctionRunner _MicroSpec_UniqueSymbol_(TestRunner, count)([] {   \
+        TestFramework::TestRegistry::instance().add_test(                            \
             description, filename, linenumber, _MicroSpec_UniqueSymbol_(Test, count) \
         );                                                                           \
     });                                                                              \
-    void           _MicroSpec_UniqueSymbol_(Test, count)()
+    void                          _MicroSpec_UniqueSymbol_(Test, count)()
 
 #define Test(description) _MicroSpec_AddTest_(description, __FILE__, __LINE__, __COUNTER__)
