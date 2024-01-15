@@ -16,30 +16,29 @@ struct TestFramework {
         unsigned int          line_number;
         std::function<void()> fn;
         std::string           full_description() const {
-            if (!group->is_root()) return group->full_description() + " > " + description;
+            if (group && !group->is_root()) return group->full_description() + " > " + description;
             else return description;
         }
     };
 
     struct TestGroup {
-        TestGroup*                             parent = nullptr;
-        std::string                            description;
-        std::vector<TestGroup>                 groups;
-        std::vector<std::unique_ptr<TestInfo>> tests;
+        TestGroup*                              parent = nullptr;
+        std::string                             description;
+        std::vector<std::unique_ptr<TestGroup>> groups;
+        std::vector<std::unique_ptr<TestInfo>>  tests;
         TestGroup() = default;
         TestGroup(TestGroup* parent, const std::string& description)
             : parent(parent), description(description) {}
         bool        is_root() const { return parent == nullptr; }
         std::string full_description() const {
-            if (parent && !parent->is_root())
-                return parent->full_description() + " > " + description;
+            if (parent) return parent->full_description() + " > " + description;
             else return description;
         }
     };
 
     class TestRegistry {
-        std::vector<TestGroup>  _groups;
-        std::vector<TestGroup*> _group_stack;
+        std::vector<std::unique_ptr<TestGroup>> _group_storage;
+        std::vector<TestGroup*>                 _group_stack;
 
         // Map filename => line number => TestInfo*
         std::unordered_map<std::string, std::unordered_map<unsigned int, TestInfo*>> _tests;
@@ -56,8 +55,8 @@ struct TestFramework {
 
         TestGroup* current_group() {
             if (_group_stack.empty()) {
-                _groups.emplace_back();
-                _group_stack.push_back(&_groups.back());
+                _group_storage.emplace_back(new TestGroup());
+                _group_stack.push_back(_group_storage.back().get());
             }
             return _group_stack.back();
         }
@@ -71,13 +70,17 @@ struct TestFramework {
             _tests[filename][line] = test;
         }
 
-        void define_group(const std::string& description) {
-            current_group()->groups.emplace_back(current_group(), description);
-            auto* group = &current_group()->groups.back();
-            _group_stack.push_back(group);
+        void define_group(const std::string& description, bool root = false) {
+            auto* newGroup = new TestGroup(root ? nullptr : current_group(), description);
+            _group_storage.emplace_back(newGroup);
+            if (root) _group_stack = {newGroup};
+            else _group_stack.push_back(newGroup);
         }
 
-        void pop_group() { _group_stack.pop_back(); }
+        void pop_group() {
+            if (_group_stack.size() == 1) return;
+            _group_stack.pop_back();
+        }
 
         TestInfo* find_test(const std::string& filename, unsigned int line) {
             auto file = _tests.find(filename);
@@ -164,15 +167,6 @@ struct TestFramework {
 #define __MicroSpec_Stringify_Core(x) #x
 #define __MicroSpec_Stringify(x) __MicroSpec_Stringify_Core(x)
 
-#ifdef SPEC_FILE
-    #define _MicroSpec_CompilationUnit_ SPEC_FILE
-#elif defined(SPEC_GROUP)
-    #define _MicroSpec_CompilationUnit_ SPEC_GROUP
-
-#elif !defined(_MicroSpec_CompilationUnit_)
-    #define _MicroSpec_CompilationUnit_ _DefaultFile_
-#endif
-
 #define _MicroSpec_UniqueSymbol_(prefix, count) \
     __MicroSpec_Concat(prefix, __MicroSpec_Concat(_MicroSpec_CompilationUnit_, count))
 
@@ -185,13 +179,33 @@ struct TestFramework {
     });                                                                              \
     void                          _MicroSpec_UniqueSymbol_(Test, count)()
 
-#define _MicroSpec_RunCode_(code) \
-    TestFramework::FunctionRunner _MicroSpec_UniqueSymbol_(TestRunner, __COUNTER__)([] { code; })
+#define _MicroSpec_RunCode_(symbol, code)                         \
+    TestFramework::FunctionRunner _MicroSpec_UniqueSymbol_(       \
+        symbol, _MicroSpec_UniqueSymbol_(TestRunner, __COUNTER__) \
+    )([] { code; })
 
 #define Test(description) _MicroSpec_AddTest_(description, __FILE__, __LINE__, __COUNTER__)
-#define TestGroup(description) \
-    _MicroSpec_RunCode_(TestFramework::TestRegistry::instance().define_group(description))
-#define StartGroup(description) \
-    TestGroup(description);     \
+#define TestGroup(description)                                                                   \
+    _MicroSpec_RunCode_(                                                                         \
+        _MicroSpec_TestGroup_, TestFramework::TestRegistry::instance().define_group(description) \
+    )
+#define EndTestGroup()                                                                \
+    _MicroSpec_RunCode_(                                                              \
+        _MicroSpec_EndTestGroup_, TestFramework::TestRegistry::instance().pop_group() \
+    )
+#define Describe(description) \
+    TestGroup(description);   \
     namespace
-#define EndGroup() _MicroSpec_RunCode_(TestFramework::TestRegistry::instance().pop_group())
+#define End \
+    _MicroSpec_RunCode_(_MicroSpec_End_, TestFramework::TestRegistry::instance().pop_group());
+
+#ifdef SPEC_FILE
+    #define _MicroSpec_CompilationUnit_ SPEC_FILE
+#elif defined(SPEC_GROUP)
+    #define _MicroSpec_CompilationUnit_ SPEC_GROUP
+// clang-format off
+_MicroSpec_RunCode_(_MicroSpec_TopLevelTestGroup_, TestFramework::TestRegistry::instance().define_group(__MicroSpec_Stringify(SPEC_GROUP), true));
+// clang-format on
+#elif !defined(_MicroSpec_CompilationUnit_)
+    #define _MicroSpec_CompilationUnit_ _DefaultFile_
+#endif
