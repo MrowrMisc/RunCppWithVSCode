@@ -1,9 +1,9 @@
 import * as vscode from "vscode";
 import * as child_process from "child_process";
-import { getSpecsConfig } from "./SpecsConfig";
+import { getSpecsConfig, SpecsConfigFile } from "./SpecsConfig";
 import { ITestComponent, Test, TestGroup, TestResult } from "./TestTypes";
 
-class TestRunner {
+class TestManager {
     public async build(): Promise<void> {
         const specsConfig = await getSpecsConfig();
         if (!specsConfig?.buildCommand) return;
@@ -86,7 +86,7 @@ class TestRunner {
         });
     }
 
-    public async discover(): Promise<Test[] | undefined> {
+    public async discover(): Promise<ITestComponent[] | undefined> {
         await this.build();
 
         const specsConfig = await getSpecsConfig();
@@ -103,13 +103,12 @@ class TestRunner {
                 if (error) reject(error);
             });
             child.stdout?.on("data", (data) => {
-                const tests: Test[] = [];
+                const rootTestGroup = new TestGroup();
                 const lines = data.split("\n");
                 for (const line of lines) {
-                    const test = this.parseTestLine(line);
-                    if (test) tests.push(test);
+                    this.parseTestLine(line, specsConfig, rootTestGroup);
                 }
-                resolve(tests);
+                resolve(rootTestGroup.children);
             });
             child.stderr?.on("data", (data) => {
                 reject(data);
@@ -117,34 +116,64 @@ class TestRunner {
         });
     }
 
-    private parseTestLine(line: string): Test | undefined {
-        // TODO: make regex configurable and use NAMED captures :)
-        const regex = /(.+):(\d+):(.+)/;
-        const matches = line.match(regex);
-        if (matches && matches.length === 4) {
-            const filePath = matches[1];
-            const lineNumber = parseInt(matches[2]);
-            const testDescription = matches[3];
-            return new Test(testDescription, filePath, lineNumber);
+    private parseTestLine(line: string, specsConfig: SpecsConfigFile, rootTestGroup: TestGroup) {
+        // TODO: make regex configurable
+        const testInfoRegex = /(?<filepath>.+):(?<linenumber>\d+):(?<description>.+)/;
+        const matches = testInfoRegex.exec(line);
+        if (matches && matches.groups) {
+            const filePath = matches.groups.filepath;
+            const lineNumber = parseInt(matches.groups.linenumber);
+            const testDescription = matches.groups.description;
+            if (specsConfig.discoverySeparator) {
+                const testDescriptionParts = testDescription
+                    .split(specsConfig.discoverySeparator)
+                    .map((part) => part.trim());
+
+                if (testDescriptionParts.length === 1) {
+                    const test = new Test(testDescription.trim(), filePath, lineNumber);
+                    rootTestGroup.children.push(test);
+                    return;
+                }
+                let currentTestGroup = rootTestGroup;
+                testDescriptionParts.forEach((testGroupDescription) => {
+                    let testGroup = currentTestGroup.children.find(
+                        (child) => child.description === testGroupDescription,
+                    );
+                    if (!testGroup) {
+                        testGroup = new TestGroup(testGroupDescription, currentTestGroup);
+                        currentTestGroup.children.push(testGroup);
+                    }
+                    currentTestGroup = testGroup as TestGroup;
+                });
+                const test = new Test(
+                    testDescriptionParts[testDescriptionParts.length - 1],
+                    filePath,
+                    lineNumber,
+                    currentTestGroup,
+                );
+                currentTestGroup.children.push(test);
+            } else {
+                const test = new Test(testDescription.trim(), filePath, lineNumber);
+                rootTestGroup.children.push(test);
+            }
         }
-        return undefined;
     }
 }
 
-const testRunner = new TestRunner();
+const testManager = new TestManager();
 
 export async function buildTestsProject(): Promise<void> {
-    await testRunner.build();
+    await testManager.build();
 }
 
 export async function runTest(filePath: string, lineNumber: number): Promise<TestResult | undefined> {
-    return await testRunner.run(filePath, lineNumber);
+    return await testManager.run(filePath, lineNumber);
 }
 
 export async function debugTest(filePath: string, lineNumber: number) {
-    testRunner.debug(filePath, lineNumber);
+    testManager.debug(filePath, lineNumber);
 }
 
 export async function discoverTests(): Promise<ITestComponent[] | undefined> {
-    return await testRunner.discover();
+    return await testManager.discover();
 }

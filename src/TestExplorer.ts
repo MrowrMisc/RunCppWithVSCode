@@ -1,9 +1,9 @@
 import * as vscode from "vscode";
-import { discoverTests, buildTestsProject, runTest, debugTest } from "./TestRunner";
+import { discoverTests, buildTestsProject, runTest, debugTest } from "./TestManager";
 import { Test, TestComponentType } from "./TestTypes";
 import { getSpecsConfig } from "./SpecsConfig";
 
-const CONTROLLER_ID = "this._controller";
+const CONTROLLER_ID = "specs-test-explorer";
 const CONTROLLER_LABEL = "C++ Tests";
 
 class TestExplorer {
@@ -38,8 +38,8 @@ class TestExplorer {
             existingTestIds.add(test.id);
         });
 
-        const tests = await discoverTests();
-        if (!tests) {
+        const discoveredTestComponents = await discoverTests();
+        if (!discoveredTestComponents) {
             vscode.window.showErrorMessage("Failed to discover tests");
             this._controller.items.forEach((test) => {
                 this._controller.items.delete(test.id);
@@ -48,7 +48,7 @@ class TestExplorer {
         }
 
         const discoveredTestIds = new Set<string>();
-        tests.forEach((testComponent) => {
+        discoveredTestComponents.forEach((testComponent) => {
             if (testComponent.type !== TestComponentType.Test) return;
             const test = testComponent as Test;
             const id = `${test.filePath}:${test.lineNumber}`;

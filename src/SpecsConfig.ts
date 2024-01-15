@@ -1,7 +1,7 @@
 import { spec } from "node:test/reporters";
 import * as vscode from "vscode";
 
-class SpecsConfigFile {
+export class SpecsConfigFile {
     public buildCommand: string | undefined = undefined;
     public discoveryCommand: string = "";
     public discoverySeparator: string | undefined = undefined;

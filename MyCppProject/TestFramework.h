@@ -155,7 +155,7 @@ struct TestFramework {
     });                                                                                                                            \
     void                          _MicroSpec_UniqueSymbol_(symbol, count)()
 #define _MicroSpec_RunCode_(symbol, code) \
-    TestFramework::FunctionRunner _MicroSpec_UniqueSymbol_(symbol, _MicroSpec_UniqueSymbol_(TestRunner, __COUNTER__))([] { code; })
+    TestFramework::FunctionRunner _MicroSpec_UniqueSymbol_(symbol, _MicroSpec_UniqueSymbol_(testManager, __COUNTER__))([] { code; })
 #define Test(description) _MicroSpec_AddComponent_(add_test, _Test_, description, __FILE__, __LINE__, __COUNTER__)
 #define Setup _MicroSpec_AddComponent_(add_setup, _Setup_, "", __FILE__, __LINE__, __COUNTER__)
 #define Teardown _MicroSpec_AddComponent_(add_teardown, _Teardown_, "", __FILE__, __LINE__, __COUNTER__)

@@ -11,9 +11,9 @@ export interface ITestComponent {
 }
 
 class TestComponent implements ITestComponent {
-    public type: TestComponentType = TestComponentType.Test;
-    public description: string;
-    public group: TestGroup | undefined;
+    public type = TestComponentType.Test;
+    public description;
+    public group;
 
     constructor(description: string, group: TestGroup | undefined = undefined) {
         this.description = description;
@@ -28,9 +28,13 @@ class TestComponent implements ITestComponent {
 
 // Class TestGroup which inherits from TestComponent and additionally contains a list of children TestComponents
 export class TestGroup extends TestComponent {
+    public type = TestComponentType.TestGroup;
     public children: ITestComponent[] = [];
-    constructor(description: string, group: TestGroup | undefined = undefined) {
+    constructor(description: string = "", group: TestGroup | undefined = undefined) {
         super(description, group);
+    }
+    isRootGroup(): boolean {
+        return this.group === undefined;
     }
 }
 
