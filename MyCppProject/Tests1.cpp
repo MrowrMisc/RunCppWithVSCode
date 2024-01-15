@@ -1,11 +1,7 @@
-#include <iostream>
-
-#include "Entrypoint.h"  // IWYU pragma: keep
-#include "TestMacro.h"
+#include "TestFramework.h"
 
 Test("Test 1") {
-    std::cout << "Hello from Test 1" << std::endl;
-    // throw "Kablamo!???";
+    // throw "Kaboom!";
     std::cout << "Hello from Test 1" << std::endl;
 }
 
