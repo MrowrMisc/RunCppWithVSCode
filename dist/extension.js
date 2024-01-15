@@ -30,26 +30,44 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.registerCppTestController = exports.cppTestController = void 0;
+exports.registerCppTestController = void 0;
 const vscode = __importStar(__webpack_require__(2));
 const runCppOutputChannel_1 = __webpack_require__(3);
 const testRunner_1 = __webpack_require__(4);
-const testResultDiagnostics_1 = __webpack_require__(7);
-exports.cppTestController = vscode.tests.createTestController("cppTestController", "C++ Tests");
+const cppTestController = vscode.tests.createTestController("cppTestController", "C++ Tests");
+function registerCppTestController(context) {
+    context.subscriptions.push(cppTestController);
+}
+exports.registerCppTestController = registerCppTestController;
 async function discover() {
+    const existingTestIds = new Set();
+    cppTestController.items.forEach((test) => {
+        existingTestIds.add(test.id);
+    });
     const tests = await (0, testRunner_1.discoverTests)();
-    if (!tests)
+    if (!tests) {
+        vscode.window.showErrorMessage("Failed to discover tests");
+        cppTestController.items.forEach((test) => {
+            cppTestController.items.delete(test.id);
+        });
         return;
+    }
     runCppOutputChannel_1.runCppOutputChannel.appendLine(`Discovered ${tests.length} tests`);
+    const discoveredTestIds = new Set();
     tests.forEach((test) => {
         const id = `${test.filename}:${test.linenumber}`;
+        discoveredTestIds.add(id);
         const filePath = vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, test.filename);
-        const vscodeTest = exports.cppTestController.createTestItem(id, test.description, vscode.Uri.file(filePath.fsPath));
+        const vscodeTest = cppTestController.createTestItem(id, test.description, vscode.Uri.file(filePath.fsPath));
         vscodeTest.range = new vscode.Range(new vscode.Position(test.linenumber - 1, 0), new vscode.Position(test.linenumber - 1, 0));
-        exports.cppTestController.items.add(vscodeTest);
+        cppTestController.items.add(vscodeTest);
+    });
+    existingTestIds.forEach((id) => {
+        if (!discoveredTestIds.has(id))
+            cppTestController.items.delete(id);
     });
 }
-exports.cppTestController.resolveHandler = async (test) => {
+cppTestController.resolveHandler = async (test) => {
     if (test) {
         runCppOutputChannel_1.runCppOutputChannel.appendLine(`ResolveHandler called for ${test.id}`);
     }
@@ -58,22 +76,12 @@ exports.cppTestController.resolveHandler = async (test) => {
         await discover();
     }
 };
-exports.cppTestController.refreshHandler = async () => {
-    runCppOutputChannel_1.runCppOutputChannel.appendLine("RefreshHandler called");
-    exports.cppTestController.items.forEach((test) => {
-        exports.cppTestController.items.delete(test.id);
-    });
+cppTestController.refreshHandler = async () => {
     await (0, testRunner_1.buildTestsProject)();
     await discover();
 };
-function registerCppTestController(context) {
-    context.subscriptions.push(exports.cppTestController);
-}
-exports.registerCppTestController = registerCppTestController;
 async function runHandler(shouldDebug, request, token) {
-    testResultDiagnostics_1.testResultDiagnosticCollection.clear();
-    const run = exports.cppTestController.createTestRun(request);
-    run.appendOutput("Running tests...\n");
+    const run = cppTestController.createTestRun(request);
     await (0, testRunner_1.buildTestsProject)();
     const testsToRun = [];
     if (request.include)
@@ -81,7 +89,7 @@ async function runHandler(shouldDebug, request, token) {
             testsToRun.push(test);
         });
     else
-        exports.cppTestController.items.forEach((test) => {
+        cppTestController.items.forEach((test) => {
             testsToRun.push(test);
         });
     runCppOutputChannel_1.runCppOutputChannel.appendLine(`Running ${testsToRun.length} tests`);
@@ -114,7 +122,7 @@ async function runHandler(shouldDebug, request, token) {
     }
     run.end();
 }
-const cppRunTestProfile = exports.cppTestController.createRunProfile("Run Tests", vscode.TestRunProfileKind.Run, (request, token) => {
+const cppRunTestProfile = cppTestController.createRunProfile("Run Tests", vscode.TestRunProfileKind.Run, (request, token) => {
     runHandler(false, request, token);
 }, true);
 
@@ -389,40 +397,6 @@ async function getSpecsConfig() {
     return currentSpecsConfig;
 }
 exports.getSpecsConfig = getSpecsConfig;
-
-
-/***/ }),
-/* 7 */
-/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
-
-
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
-    __setModuleDefault(result, mod);
-    return result;
-};
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.testResultDiagnosticCollection = void 0;
-const vscode = __importStar(__webpack_require__(2));
-exports.testResultDiagnosticCollection = vscode.languages.createDiagnosticCollection("our-test-results");
 
 
 /***/ })

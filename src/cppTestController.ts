@@ -1,17 +1,34 @@
 import * as vscode from "vscode";
 import { runCppOutputChannel } from "./runCppOutputChannel";
 import { discoverTests, buildTestsProject, runTest } from "./testRunner";
-import { testResultDiagnosticCollection } from "./testResultDiagnostics";
 
-export const cppTestController = vscode.tests.createTestController("cppTestController", "C++ Tests");
+const cppTestController = vscode.tests.createTestController("cppTestController", "C++ Tests");
+
+export function registerCppTestController(context: vscode.ExtensionContext) {
+    context.subscriptions.push(cppTestController);
+}
 
 async function discover(): Promise<void> {
+    const existingTestIds = new Set<string>();
+    cppTestController.items.forEach((test) => {
+        existingTestIds.add(test.id);
+    });
+
     const tests = await discoverTests();
-    if (!tests) return;
+    if (!tests) {
+        vscode.window.showErrorMessage("Failed to discover tests");
+        cppTestController.items.forEach((test) => {
+            cppTestController.items.delete(test.id);
+        });
+        return;
+    }
 
     runCppOutputChannel.appendLine(`Discovered ${tests.length} tests`);
+
+    const discoveredTestIds = new Set<string>();
     tests.forEach((test) => {
         const id = `${test.filename}:${test.linenumber}`;
+        discoveredTestIds.add(id);
         const filePath = vscode.Uri.joinPath(vscode.workspace.workspaceFolders![0].uri, test.filename);
         const vscodeTest = cppTestController.createTestItem(id, test.description, vscode.Uri.file(filePath.fsPath));
         vscodeTest.range = new vscode.Range(
@@ -19,6 +36,10 @@ async function discover(): Promise<void> {
             new vscode.Position(test.linenumber - 1, 0)
         );
         cppTestController.items.add(vscodeTest);
+    });
+
+    existingTestIds.forEach((id) => {
+        if (!discoveredTestIds.has(id)) cppTestController.items.delete(id);
     });
 }
 
@@ -32,22 +53,12 @@ cppTestController.resolveHandler = async (test) => {
 };
 
 cppTestController.refreshHandler = async () => {
-    runCppOutputChannel.appendLine("RefreshHandler called");
-    cppTestController.items.forEach((test) => {
-        cppTestController.items.delete(test.id);
-    });
     await buildTestsProject();
     await discover();
 };
 
-export function registerCppTestController(context: vscode.ExtensionContext) {
-    context.subscriptions.push(cppTestController);
-}
-
 async function runHandler(shouldDebug: boolean, request: vscode.TestRunRequest, token: vscode.CancellationToken) {
-    testResultDiagnosticCollection.clear();
     const run = cppTestController.createTestRun(request);
-    run.appendOutput("Running tests...\n");
 
     await buildTestsProject();
 
