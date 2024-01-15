@@ -30,59 +30,91 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.registerCppTestController = void 0;
+exports.RegisterSpecsTestExtension = void 0;
 const vscode = __importStar(__webpack_require__(2));
-const runCppOutputChannel_1 = __webpack_require__(3);
-const testRunner_1 = __webpack_require__(4);
-const specsConfigFile_1 = __webpack_require__(6);
-const cppTestController = vscode.tests.createTestController("cppTestController", "C++ Tests");
-function registerCppTestController(context) {
-    context.subscriptions.push(cppTestController);
-}
-exports.registerCppTestController = registerCppTestController;
-async function discover() {
-    const existingTestIds = new Set();
-    cppTestController.items.forEach((test) => {
-        existingTestIds.add(test.id);
-    });
-    const tests = await (0, testRunner_1.discoverTests)();
-    if (!tests) {
-        vscode.window.showErrorMessage("Failed to discover tests");
-        cppTestController.items.forEach((test) => {
-            cppTestController.items.delete(test.id);
+const TestRunner_1 = __webpack_require__(3);
+const SpecsConfig_1 = __webpack_require__(5);
+const CONTROLLER_ID = "this._controller";
+const CONTROLLER_LABEL = "C++ Tests";
+class TestExplorer {
+    _controller;
+    constructor() {
+        this._controller = vscode.tests.createTestController(CONTROLLER_ID, CONTROLLER_LABEL);
+        this._controller.refreshHandler = this.refresh.bind(this);
+        this._controller.resolveHandler = async (test) => {
+            if (test)
+                vscode.window.showErrorMessage("Resolving individual tests is not supported");
+            else
+                await this.refresh();
+        };
+        this._controller.createRunProfile("Run", vscode.TestRunProfileKind.Run, this.run.bind(this), true);
+        (0, SpecsConfig_1.getSpecsConfig)().then((config) => {
+            if (config?.debugCommand)
+                this._controller.createRunProfile("Debug", vscode.TestRunProfileKind.Debug, this.debug.bind(this), true);
         });
-        return;
     }
-    runCppOutputChannel_1.runCppOutputChannel.appendLine(`Discovered ${tests.length} tests`);
-    const discoveredTestIds = new Set();
-    tests.forEach((test) => {
-        const id = `${test.filename}:${test.linenumber}`;
-        discoveredTestIds.add(id);
-        const filePath = vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, test.filename);
-        const vscodeTest = cppTestController.createTestItem(id, test.description, vscode.Uri.file(filePath.fsPath));
-        vscodeTest.range = new vscode.Range(new vscode.Position(test.linenumber - 1, 0), new vscode.Position(test.linenumber - 1, 0));
-        cppTestController.items.add(vscodeTest);
-    });
-    existingTestIds.forEach((id) => {
-        if (!discoveredTestIds.has(id))
-            cppTestController.items.delete(id);
-    });
-}
-cppTestController.resolveHandler = async (test) => {
-    if (test) {
-        runCppOutputChannel_1.runCppOutputChannel.appendLine(`ResolveHandler called for ${test.id}`);
+    registerController(context) {
+        context.subscriptions.push(this._controller);
     }
-    else {
-        runCppOutputChannel_1.runCppOutputChannel.appendLine("ResolveHandler called for the first time");
-        await discover();
+    async refresh() {
+        const existingTestIds = new Set();
+        this._controller.items.forEach((test) => {
+            existingTestIds.add(test.id);
+        });
+        const tests = await (0, TestRunner_1.discoverTests)();
+        if (!tests) {
+            vscode.window.showErrorMessage("Failed to discover tests");
+            this._controller.items.forEach((test) => {
+                this._controller.items.delete(test.id);
+            });
+            return;
+        }
+        const discoveredTestIds = new Set();
+        tests.forEach((test) => {
+            const id = `${test.filename}:${test.linenumber}`;
+            discoveredTestIds.add(id);
+            const filePath = vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, test.filename);
+            const vscodeTest = this._controller.createTestItem(id, test.description, vscode.Uri.file(filePath.fsPath));
+            vscodeTest.range = new vscode.Range(new vscode.Position(test.linenumber - 1, 0), new vscode.Position(test.linenumber - 1, 0));
+            this._controller.items.add(vscodeTest);
+        });
+        existingTestIds.forEach((id) => {
+            if (!discoveredTestIds.has(id))
+                this._controller.items.delete(id);
+        });
     }
-};
-cppTestController.refreshHandler = async () => {
-    await (0, testRunner_1.buildTestsProject)();
-    await discover();
-};
-async function runHandler(debug, request, token) {
-    if (debug) {
+    async run(request, token) {
+        await (0, TestRunner_1.buildTestsProject)();
+        const run = this._controller.createTestRun(request);
+        const testsToRun = [];
+        if (request.include)
+            request.include.forEach((test) => {
+                testsToRun.push(test);
+            });
+        else
+            this._controller.items.forEach((test) => {
+                testsToRun.push(test);
+            });
+        run.appendOutput(`Running ${testsToRun.length} tests\n`);
+        while (testsToRun.length > 0 && !token.isCancellationRequested) {
+            const test = testsToRun.pop();
+            if (request.exclude?.includes(test))
+                continue;
+            const [filename, linenumber] = test.id.split(":");
+            const start = Date.now();
+            run.started(test);
+            const testResult = await (0, TestRunner_1.runTest)(filename, parseInt(linenumber));
+            if (!testResult)
+                continue;
+            const duration = Date.now() - start;
+            if (testResult.testPassed)
+                run.passed(test, duration);
+            else
+                run.failed(test, new vscode.TestMessage(testResult.testOutput), duration);
+        }
+        run.end();
+    }
+    async debug(request, token) {
         const debugAll = request.include === undefined;
         if (debugAll) {
             vscode.window.showErrorMessage("Debug all tests is not supported");
@@ -94,60 +126,15 @@ async function runHandler(debug, request, token) {
         }
         const test = request.include[0];
         const [filename, linenumber] = test.id.split(":");
-        await (0, testRunner_1.buildTestsProject)();
-        await (0, testRunner_1.debugTest)(filename, parseInt(linenumber));
-        return;
+        await (0, TestRunner_1.buildTestsProject)();
+        await (0, TestRunner_1.debugTest)(filename, parseInt(linenumber));
     }
-    const run = cppTestController.createTestRun(request);
-    await (0, testRunner_1.buildTestsProject)();
-    const testsToRun = [];
-    if (request.include)
-        request.include.forEach((test) => {
-            testsToRun.push(test);
-        });
-    else
-        cppTestController.items.forEach((test) => {
-            testsToRun.push(test);
-        });
-    runCppOutputChannel_1.runCppOutputChannel.appendLine(`Running ${testsToRun.length} tests`);
-    run.appendOutput(`Running ${testsToRun.length} tests\n`);
-    while (testsToRun.length > 0 && !token.isCancellationRequested) {
-        const test = testsToRun.pop();
-        if (request.exclude?.includes(test)) {
-            runCppOutputChannel_1.runCppOutputChannel.appendLine(`Skipping ${test.id}`);
-            continue;
-        }
-        runCppOutputChannel_1.runCppOutputChannel.appendLine(`Running ${test.id}`);
-        const [filename, linenumber] = test.id.split(":");
-        // const filePath = vscode.Uri.joinPath(vscode.workspace.workspaceFolders![0].uri, filename);
-        const start = Date.now();
-        run.started(test);
-        const testResult = await (0, testRunner_1.runTest)(filename, parseInt(linenumber), debug);
-        if (!testResult)
-            continue;
-        const duration = Date.now() - start;
-        if (testResult.testPassed) {
-            runCppOutputChannel_1.runCppOutputChannel.appendLine(`Test ${test.id} passed`);
-            run.appendOutput(testResult.testOutput);
-            run.passed(test, duration);
-        }
-        else {
-            runCppOutputChannel_1.runCppOutputChannel.appendLine(`Test ${test.id} failed`);
-            run.appendOutput(testResult.testOutput);
-            run.failed(test, new vscode.TestMessage(testResult.testOutput), duration);
-        }
-    }
-    run.end();
 }
-cppTestController.createRunProfile("Run", vscode.TestRunProfileKind.Run, (request, token) => {
-    runHandler(false, request, token);
-}, true);
-(0, specsConfigFile_1.getSpecsConfig)().then((config) => {
-    if (config?.debugCommand)
-        cppTestController.createRunProfile("Debug", vscode.TestRunProfileKind.Debug, (request, token) => {
-            runHandler(true, request, token);
-        }, true);
-});
+const testExplorer = new TestExplorer();
+function RegisterSpecsTestExtension(context) {
+    testExplorer.registerController(context);
+}
+exports.RegisterSpecsTestExtension = RegisterSpecsTestExtension;
 
 
 /***/ }),
@@ -185,45 +172,10 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.runCppOutputChannel = void 0;
-const vscode = __importStar(__webpack_require__(2));
-const runCppOutputChannelName = "Run C++ Stuff";
-exports.runCppOutputChannel = vscode.window.createOutputChannel(runCppOutputChannelName);
-
-
-/***/ }),
-/* 4 */
-/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
-
-
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
-    __setModuleDefault(result, mod);
-    return result;
-};
-Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.discoverTests = exports.debugTest = exports.runTest = exports.buildTestsProject = void 0;
 const vscode = __importStar(__webpack_require__(2));
-const child_process = __importStar(__webpack_require__(5));
-const specsConfigFile_1 = __webpack_require__(6);
+const child_process = __importStar(__webpack_require__(4));
+const SpecsConfig_1 = __webpack_require__(5);
 class Test {
     description;
     filename;
@@ -244,7 +196,7 @@ class TestResult {
 }
 class TestRunner {
     async build() {
-        const specsConfig = await (0, specsConfigFile_1.getSpecsConfig)();
+        const specsConfig = await (0, SpecsConfig_1.getSpecsConfig)();
         if (!specsConfig?.buildCommand)
             return;
         const command = specsConfig.buildCommand;
@@ -263,7 +215,7 @@ class TestRunner {
         });
     }
     async run(filePath, lineNumber) {
-        const specsConfig = await (0, specsConfigFile_1.getSpecsConfig)();
+        const specsConfig = await (0, SpecsConfig_1.getSpecsConfig)();
         if (!specsConfig?.runCommand) {
             vscode.window.showErrorMessage("No run command specified in specs.json");
             return;
@@ -289,7 +241,7 @@ class TestRunner {
         });
     }
     async debug(filePath, lineNumber) {
-        const specsConfig = await (0, specsConfigFile_1.getSpecsConfig)();
+        const specsConfig = await (0, SpecsConfig_1.getSpecsConfig)();
         if (!specsConfig?.debugCommand) {
             vscode.window.showErrorMessage("No debug command specified in specs.json");
             return;
@@ -319,7 +271,7 @@ class TestRunner {
     }
     async discover() {
         await this.build();
-        const specsConfig = await (0, specsConfigFile_1.getSpecsConfig)();
+        const specsConfig = await (0, SpecsConfig_1.getSpecsConfig)();
         if (!specsConfig?.discoveryCommand) {
             vscode.window.showErrorMessage("No discovery command specified in specs.json");
             return;
@@ -368,7 +320,7 @@ async function buildTestsProject() {
     await testRunner.build();
 }
 exports.buildTestsProject = buildTestsProject;
-async function runTest(filePath, lineNumber, debug = false) {
+async function runTest(filePath, lineNumber) {
     return await testRunner.run(filePath, lineNumber);
 }
 exports.runTest = runTest;
@@ -383,13 +335,13 @@ exports.discoverTests = discoverTests;
 
 
 /***/ }),
-/* 5 */
+/* 4 */
 /***/ ((module) => {
 
 module.exports = require("child_process");
 
 /***/ }),
-/* 6 */
+/* 5 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -491,9 +443,9 @@ var exports = __webpack_exports__;
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.deactivate = exports.activate = void 0;
-const cppTestController_1 = __webpack_require__(1);
+const TestExplorer_1 = __webpack_require__(1);
 function activate(context) {
-    (0, cppTestController_1.registerCppTestController)(context);
+    (0, TestExplorer_1.RegisterSpecsTestExtension)(context);
 }
 exports.activate = activate;
 function deactivate() { }

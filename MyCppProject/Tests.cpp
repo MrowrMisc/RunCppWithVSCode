@@ -5,7 +5,7 @@
 
 Test("Test 1") {
     std::cout << "Hello from Test 1" << std::endl;
-    throw "Kablamo!???";
+    // throw "Kablamo!???";
     std::cout << "Hello from Test 1" << std::endl;
 }
 

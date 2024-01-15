@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import * as child_process from "child_process";
-import { getSpecsConfig } from "./specsConfigFile";
+import { getSpecsConfig } from "./SpecsConfig";
 
 class Test {
     constructor(public description: string, public filename: string, public linenumber: number) {}
@@ -151,7 +151,6 @@ export async function buildTestsProject(): Promise<void> {
 export async function runTest(
     filePath: string,
     lineNumber: number,
-    debug: boolean = false
 ): Promise<TestResult | undefined> {
     return await testRunner.run(filePath, lineNumber);
 }

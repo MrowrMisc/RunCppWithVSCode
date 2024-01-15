@@ -1,8 +1,8 @@
 import * as vscode from "vscode";
-import { registerCppTestController } from "./cppTestController";
+import { RegisterSpecsTestExtension } from "./TestExplorer";
 
 export function activate(context: vscode.ExtensionContext) {
-    registerCppTestController(context);
+    RegisterSpecsTestExtension(context);
 }
 
 export function deactivate() {}
