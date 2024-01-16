@@ -12,6 +12,7 @@ def test_should_fail():
 import sys
 import types
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass
@@ -36,7 +37,9 @@ def run_test_framework():
     # Find the tests in this file
     for name, obj in globals().items():
         if isinstance(obj, types.FunctionType) and name.startswith("test_"):
-            tests.append(Test(name, obj, obj.__code__.co_firstlineno, obj.__code__.co_filename))
+            absolute_filepath = Path(obj.__code__.co_filename)
+            relative_filepath = absolute_filepath.relative_to(Path(__file__).parent)
+            tests.append(Test(name, obj, obj.__code__.co_firstlineno, str(relative_filepath)))
 
     # python PythonExample.py --list
     if len(sys.argv) == 2 and sys.argv[1] == "--list":
