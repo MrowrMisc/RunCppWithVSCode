@@ -125,7 +125,7 @@ struct TestFramework {
             return 0;  // TODO return 1 if any failed
         } else if (argc == 2 && std::string(argv[1]) == "--list") {
             ForEachTest([](TestInfo* test) {
-                std::cout << test->filename << ":" << test->line_number << ": " << test->full_description() << std::endl;
+                std::cout << test->filename << ":" << test->line_number << ":" << test->full_description() << std::endl;
             });
             return 0;
         } else if (argc != 3) {

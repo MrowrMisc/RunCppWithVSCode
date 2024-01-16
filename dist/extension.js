@@ -50,7 +50,7 @@ class TestExplorer {
         };
         this._controller.createRunProfile("Run", vscode.TestRunProfileKind.Run, this.run.bind(this), true);
         (0, SpecsConfig_1.getSpecsConfig)().then((config) => {
-            if (config?.debugCommand)
+            if (config?.anySuitesSupportDebug())
                 this._controller.createRunProfile("Debug", vscode.TestRunProfileKind.Debug, this.debug.bind(this), true);
         });
     }
@@ -60,7 +60,7 @@ class TestExplorer {
     registerTestComponent(discoveredIds, testComponent, parentTestItem) {
         if (testComponent.type === TestTypes_1.TestComponentType.Test) {
             const test = testComponent;
-            const id = `${test.filePath}:${test.lineNumber}`;
+            const id = `${test.suiteId}|${test.filePath}:${test.lineNumber}`;
             discoveredIds.add(id);
             const filePath = vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, test.filePath);
             const vscodeTest = this._controller.createTestItem(id, test.description, vscode.Uri.file(filePath.fsPath));
@@ -78,7 +78,7 @@ class TestExplorer {
                 });
             }
             else {
-                const id = `group: ${testGroup.fullDescription()}`;
+                const id = `group: ${testGroup.fullDescription()}|${testGroup.suiteId}}`;
                 discoveredIds.add(id);
                 const vscodeTestGroup = this._controller.createTestItem(id, testGroup.description);
                 if (parentTestItem)
@@ -138,10 +138,11 @@ class TestExplorer {
                 continue;
             if (test.id.startsWith("group:"))
                 continue; // or mark passed?
-            const [filename, linenumber] = test.id.split(":");
+            const [suiteId, filenameAndLineNumber] = test.id.split("|");
+            const [filename, linenumber] = filenameAndLineNumber.split(":");
             const start = Date.now();
             run.started(test);
-            const testResult = await (0, TestManager_1.runTest)(filename, parseInt(linenumber));
+            const testResult = await (0, TestManager_1.runTest)(suiteId, filename, parseInt(linenumber));
             if (!testResult)
                 continue;
             const duration = Date.now() - start;
@@ -163,9 +164,10 @@ class TestExplorer {
             return;
         }
         const test = request.include[0];
-        const [filename, linenumber] = test.id.split(":");
+        const [suiteId, filenameAndLineNumber] = test.id.split("|");
+        const [filename, linenumber] = filenameAndLineNumber.split(":");
         await (0, TestManager_1.buildTestsProject)();
-        await (0, TestManager_1.debugTest)(filename, parseInt(linenumber));
+        await (0, TestManager_1.debugTest)(suiteId, filename, parseInt(linenumber));
     }
 }
 const testExplorer = new TestExplorer();
@@ -216,33 +218,61 @@ const child_process = __importStar(__webpack_require__(4));
 const SpecsConfig_1 = __webpack_require__(5);
 const TestTypes_1 = __webpack_require__(6);
 class TestManager {
-    async build() {
-        const specsConfig = await (0, SpecsConfig_1.getSpecsConfig)();
-        if (!specsConfig?.buildCommand)
+    async buildSuite(specsSuiteConfig) {
+        if (specsSuiteConfig.isGroup)
             return;
-        const command = specsConfig.buildCommand;
-        const options = { cwd: vscode.workspace.workspaceFolders?.[0].uri.fsPath };
-        return new Promise((resolve) => {
-            const child = child_process.exec(command, options);
-            child.stdout?.on("data", (data) => {
-                console.log(data);
+        if (specsSuiteConfig.buildCommand) {
+            const command = specsSuiteConfig.buildCommand;
+            const options = { cwd: vscode.workspace.workspaceFolders?.[0].uri.fsPath };
+            return new Promise((resolve) => {
+                const child = child_process.exec(command, options);
+                child.stdout?.on("data", (data) => {
+                    console.log(data);
+                });
+                child.stderr?.on("data", (data) => {
+                    console.log(data);
+                });
+                child.on("close", (code) => {
+                    resolve();
+                });
             });
-            child.stderr?.on("data", (data) => {
-                console.log(data);
-            });
-            child.on("close", (code) => {
-                resolve();
-            });
-        });
+        }
     }
-    async run(filePath, lineNumber) {
+    async build(suiteIds = undefined) {
         const specsConfig = await (0, SpecsConfig_1.getSpecsConfig)();
-        if (!specsConfig?.runCommand) {
+        if (!specsConfig?.suites.length) {
+            vscode.window.showErrorMessage("No suites specified in specs.json");
+            return;
+        }
+        if (!suiteIds)
+            suiteIds = Array.from(specsConfig.suitesById.keys());
+        if (!suiteIds.length)
+            return;
+        const promises = [];
+        suiteIds.forEach((suiteId) => {
+            const suiteConfig = specsConfig?.suitesById.get(suiteId);
+            if (!suiteConfig?.isGroup) {
+                if (suiteConfig?.buildCommand)
+                    promises.push(this.buildSuite(suiteConfig));
+            }
+        });
+        return Promise.all(promises).then(() => { });
+    }
+    async run(suiteId, filePath, lineNumber) {
+        const specsConfig = await (0, SpecsConfig_1.getSpecsConfig)();
+        const suiteConfig = specsConfig?.suitesById.get(suiteId);
+        if (suiteConfig?.isGroup)
+            return;
+        if (!suiteConfig) {
+            vscode.window.showErrorMessage(`Suite '${suiteId}' not found in specs.json`);
+            return;
+        }
+        if (!suiteConfig?.runCommand) {
             vscode.window.showErrorMessage("No run command specified in specs.json");
             return;
         }
         let testResult = new TestTypes_1.TestResult();
-        const command = `${specsConfig.runCommand} "${filePath}" "${lineNumber}"`;
+        const command = `${suiteConfig.runCommand} "${filePath}" "${lineNumber}"`;
         return new Promise((resolve) => {
             const options = { cwd: vscode.workspace.workspaceFolders?.[0].uri.fsPath };
             const child = child_process.exec(command, options, (error) => {
@@ -261,43 +291,37 @@ class TestManager {
             });
         });
     }
-    async debug(filePath, lineNumber) {
+    async debug(suiteId, filePath, lineNumber) {
         const specsConfig = await (0, SpecsConfig_1.getSpecsConfig)();
-        if (!specsConfig?.debugCommand) {
+        const suiteConfig = specsConfig?.suitesById.get(suiteId);
+        if (!suiteConfig?.debugExecutable) {
             vscode.window.showErrorMessage("No debug command specified in specs.json");
             return;
         }
-        // TODO: rename from 'debugCommand'
-        const debugExecutable = specsConfig.debugCommand;
         vscode.debug.startDebugging(vscode.workspace.workspaceFolders?.[0], {
             name: "Debug Test",
             type: "cppvsdbg",
             request: "launch",
-            program: debugExecutable,
+            program: suiteConfig.debugExecutable,
             args: [filePath, lineNumber.toString()],
-            // stopAtEntry: false,
             cwd: "${workspaceFolder}",
             environment: [],
-            // externalConsole: false,
-            // MIMode: "gdb",
-            // miDebuggerPath: "/usr/bin/gdb",
-            // setupCommands: [
-            //     {
-            //         description: "Enable pretty-printing for gdb",
-            //         text: "-enable-pretty-printing",
-            //         ignoreFailures: true,
-            //     },
-            // ],
         });
     }
-    async discover() {
-        await this.build();
+    async discoverSuite(suiteId) {
         const specsConfig = await (0, SpecsConfig_1.getSpecsConfig)();
-        if (!specsConfig?.discoveryCommand) {
+        const suiteConfig = specsConfig?.suitesById.get(suiteId);
+        if (!suiteConfig) {
+            vscode.window.showErrorMessage(`Suite '${suiteId}' not found in specs.json`);
+            return;
+        }
+        if (suiteConfig?.isGroup)
+            return;
+        if (!suiteConfig?.discoveryCommand) {
             vscode.window.showErrorMessage("No discovery command specified in specs.json");
             return;
         }
-        const command = specsConfig.discoveryCommand;
+        const command = suiteConfig.discoveryCommand;
         const options = { cwd: vscode.workspace.workspaceFolders?.[0].uri.fsPath };
         return new Promise((resolve, reject) => {
             const child = child_process.exec(command, options, (error) => {
@@ -305,33 +329,57 @@ class TestManager {
                     reject(error);
             });
             child.stdout?.on("data", (data) => {
-                const rootTestGroup = new TestTypes_1.TestGroup();
+                const rootTestGroup = new TestTypes_1.TestGroup(suiteId, suiteConfig.name);
                 const lines = data.split("\n");
-                for (const line of lines) {
-                    this.parseTestLine(line, specsConfig, rootTestGroup);
-                }
-                resolve(rootTestGroup.children);
-            });
-            child.stderr?.on("data", (data) => {
-                reject(data);
+                for (const line of lines)
+                    this.parseTestLine(line, suiteConfig, rootTestGroup);
+                if (suiteConfig.name === "")
+                    resolve(rootTestGroup.children);
+                else
+                    resolve([rootTestGroup]);
             });
         });
     }
-    parseTestLine(line, specsConfig, rootTestGroup) {
-        // TODO: make regex configurable
-        const testInfoRegex = /(?<filepath>.+):(?<linenumber>\d+):(?<description>.+)/;
+    async discover(suiteIds = undefined) {
+        const specsConfig = await (0, SpecsConfig_1.getSpecsConfig)();
+        if (!specsConfig?.suites.length) {
+            vscode.window.showErrorMessage("No suites specified in specs.json");
+            return;
+        }
+        if (!suiteIds)
+            suiteIds = Array.from(specsConfig.suitesById.keys());
+        if (!suiteIds.length)
+            return;
+        const promises = [];
+        suiteIds.forEach((suiteId) => {
+            const suiteConfig = specsConfig?.suitesById.get(suiteId);
+            if (suiteConfig?.discoveryCommand)
+                promises.push(this.discoverSuite(suiteConfig.idenfifier()));
+        });
+        return Promise.all(promises).then((results) => {
+            const rootTestGroup = new TestTypes_1.TestGroup();
+            results.forEach((result) => {
+                if (result)
+                    rootTestGroup.children.push(...result);
+            });
+            return rootTestGroup.children;
+        });
+    }
+    parseTestLine(line, suiteConfig, rootTestGroup) {
+        const suiteId = suiteConfig.idenfifier();
+        const testInfoRegex = new RegExp(suiteConfig.discoveryRegex);
         const matches = testInfoRegex.exec(line);
         if (matches && matches.groups) {
             const filePath = matches.groups.filepath;
             const lineNumber = parseInt(matches.groups.linenumber);
             const fullTestDescription = matches.groups.description;
-            if (specsConfig.discoverySeparator) {
+            if (suiteConfig.discoverySeparator) {
                 const testDescriptionParts = fullTestDescription
-                    .split(specsConfig.discoverySeparator)
+                    .split(suiteConfig.discoverySeparator)
                     .map((part) => part.trim());
                 const testDescription = testDescriptionParts.pop()?.trim();
                 if (testDescriptionParts.length === 0) {
-                    const test = new TestTypes_1.Test(testDescription, filePath, lineNumber);
+                    const test = new TestTypes_1.Test(suiteId, testDescription, filePath, lineNumber);
                     rootTestGroup.children.push(test);
                     return;
                 }
@@ -339,16 +387,16 @@ class TestManager {
                 testDescriptionParts.forEach((testGroupDescription) => {
                     let testGroup = currentTestGroup.children.find((child) => child.description === testGroupDescription);
                     if (!testGroup) {
-                        testGroup = new TestTypes_1.TestGroup(testGroupDescription, currentTestGroup);
+                        testGroup = new TestTypes_1.TestGroup(suiteId, testGroupDescription, currentTestGroup);
                         currentTestGroup.children.push(testGroup);
                     }
                     currentTestGroup = testGroup;
                 });
-                const test = new TestTypes_1.Test(testDescription, filePath, lineNumber, currentTestGroup);
+                const test = new TestTypes_1.Test(suiteId, testDescription, filePath, lineNumber, currentTestGroup);
                 currentTestGroup.children.push(test);
             }
             else {
-                const test = new TestTypes_1.Test(fullTestDescription.trim(), filePath, lineNumber);
+                const test = new TestTypes_1.Test(suiteId, fullTestDescription.trim(), filePath, lineNumber);
                 rootTestGroup.children.push(test);
             }
         }
@@ -359,15 +407,18 @@ async function buildTestsProject() {
     await testManager.build();
 }
 exports.buildTestsProject = buildTestsProject;
-async function runTest(filePath, lineNumber) {
-    return await testManager.run(filePath, lineNumber);
+async function runTest(suiteId, filePath, lineNumber) {
+    await testManager.build();
+    return await testManager.run(suiteId, filePath, lineNumber);
 }
 exports.runTest = runTest;
-async function debugTest(filePath, lineNumber) {
-    testManager.debug(filePath, lineNumber);
+async function debugTest(suiteId, filePath, lineNumber) {
+    await testManager.build();
+    testManager.debug(suiteId, filePath, lineNumber);
 }
 exports.debugTest = debugTest;
 async function discoverTests() {
+    await testManager.build();
     return await testManager.discover();
 }
 exports.discoverTests = discoverTests;
@@ -408,36 +459,132 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.getSpecsConfig = exports.SpecsConfigFile = void 0;
+exports.getSpecsConfig = exports.SpecsSuiteConfig = exports.SpecsConfigFile = void 0;
 const vscode = __importStar(__webpack_require__(2));
+const SUITE_KEYS = ["build", "discover", "separator", "pattern", "run", "debug", "suites"];
 class SpecsConfigFile {
+    suites = [];
+    defaults = new SpecsSuiteConfig();
+    suitesById = new Map();
+    anySuitesSupportDebug() {
+        for (const suiteId in this.suitesById)
+            if (this.suitesById.get(suiteId)?.debugExecutable)
+                return true;
+        return false;
+    }
+}
+exports.SpecsConfigFile = SpecsConfigFile;
+class SpecsSuiteConfig {
+    isGroup = false;
+    name;
+    parent = undefined;
+    children = [];
     buildCommand = undefined;
     discoveryCommand = "";
     discoverySeparator = undefined;
+    discoveryRegex = "(?<filepath>.+):(?<linenumber>\\d+):(?<description>.+)";
     runCommand = "";
-    debugCommand = undefined;
+    debugExecutable = undefined;
+    variables = {};
+    constructor(name = "", parent = undefined) {
+        this.name = name;
+        this.parent = parent;
+    }
+    idenfifier() {
+        if (this.parent)
+            return `${this.parent.idenfifier()}/${this.name}`;
+        else
+            return this.name;
+    }
 }
-exports.SpecsConfigFile = SpecsConfigFile;
+exports.SpecsSuiteConfig = SpecsSuiteConfig;
+function parseSuiteConfig(suiteJSON, specsConfigFile, parentSpecSuite = undefined) {
+    if (!suiteJSON.name)
+        throw new Error("Suite name is required");
+    const suiteConfig = new SpecsSuiteConfig(suiteJSON.name, parentSpecSuite);
+    if (suiteJSON.group)
+        suiteConfig.isGroup = suiteJSON.group;
+    if (suiteJSON.build)
+        suiteConfig.buildCommand = suiteJSON.build;
+    if (suiteJSON.discover)
+        suiteConfig.discoveryCommand = suiteJSON.discover;
+    if (suiteJSON.separator)
+        suiteConfig.discoverySeparator = suiteJSON.separator;
+    if (suiteJSON.pattern)
+        suiteConfig.discoveryRegex = suiteJSON.pattern;
+    if (suiteJSON.run)
+        suiteConfig.runCommand = suiteJSON.run;
+    if (suiteJSON.debug)
+        suiteConfig.debugExecutable = suiteJSON.debug;
+    if (suiteJSON.suites)
+        for (const childSuiteJSON of suiteJSON.suites)
+            suiteConfig.children.push(parseSuiteConfig(childSuiteJSON, specsConfigFile));
+    for (const key in suiteJSON)
+        if (!SUITE_KEYS.includes(key))
+            suiteConfig.variables[key] = suiteJSON[key];
+    specsConfigFile.suitesById.set(suiteConfig.idenfifier(), suiteConfig);
+    return suiteConfig;
+}
+function processVariables(suiteConfig) {
+    const variables = suiteConfig.variables;
+    Object.keys(variables).forEach((variableName) => {
+        const variableValue = variables[variableName];
+        const replaceText = "$" + variableName;
+        if (suiteConfig.buildCommand)
+            suiteConfig.buildCommand = suiteConfig.buildCommand.replace(replaceText, variableValue);
+        if (suiteConfig.discoveryCommand)
+            suiteConfig.discoveryCommand = suiteConfig.discoveryCommand.replace(replaceText, variableValue);
+        if (suiteConfig.discoverySeparator)
+            suiteConfig.discoverySeparator = suiteConfig.discoverySeparator.replace(replaceText, variableValue);
+        if (suiteConfig.discoveryRegex)
+            suiteConfig.discoveryRegex = suiteConfig.discoveryRegex.replace(replaceText, variableValue);
+        if (suiteConfig.runCommand)
+            suiteConfig.runCommand = suiteConfig.runCommand.replace(replaceText, variableValue);
+        if (suiteConfig.debugExecutable)
+            suiteConfig.debugExecutable = suiteConfig.debugExecutable.replace(replaceText, variableValue);
+    });
+}
+function parseSpecsConfigFile(configJSON) {
+    const specsConfig = new SpecsConfigFile();
+    if (configJSON.suites)
+        for (const suiteJSON of configJSON.suites)
+            specsConfig.suites.push(parseSuiteConfig(suiteJSON, specsConfig));
+    if (configJSON.defaults) {
+        if (!configJSON.defaults.name)
+            configJSON.defaults.name = "default";
+        specsConfig.defaults = parseSuiteConfig(configJSON.defaults, specsConfig);
+        specsConfig.defaults.isGroup = true;
+    }
+    specsConfig.suitesById.forEach((suiteConfig) => {
+        if (!suiteConfig.isGroup) {
+            if (!suiteConfig.buildCommand)
+                suiteConfig.buildCommand = specsConfig.defaults.buildCommand;
+            if (!suiteConfig.discoveryCommand)
+                suiteConfig.discoveryCommand = specsConfig.defaults.discoveryCommand;
+            if (!suiteConfig.discoverySeparator)
+                suiteConfig.discoverySeparator = specsConfig.defaults.discoverySeparator;
+            if (!suiteConfig.discoveryRegex)
+                suiteConfig.discoveryRegex = specsConfig.defaults.discoveryRegex;
+            if (!suiteConfig.runCommand)
+                suiteConfig.runCommand = specsConfig.defaults.runCommand;
+            if (!suiteConfig.debugExecutable)
+                suiteConfig.debugExecutable = specsConfig.defaults.debugExecutable;
+            for (const key in specsConfig.defaults.variables)
+                if (!suiteConfig.variables[key])
+                    suiteConfig.variables[key] = specsConfig.defaults.variables[key];
+        }
+    });
+    specsConfig.suitesById.forEach((suiteConfig) => {
+        processVariables(suiteConfig);
+    });
+    return specsConfig;
+}
 async function readSpecsConfigFile() {
     const file = await vscode.workspace.findFiles(specConfigFileName);
     if (file.length > 0) {
         const content = await vscode.workspace.fs.readFile(file[0]);
         const config = JSON.parse(content.toString());
-        if (!config.run) {
-            vscode.window.showErrorMessage("No run: command found in specs config file");
-            return;
-        }
-        if (!config.discover) {
-            vscode.window.showErrorMessage("No discover: command found in specs config file");
-            return;
-        }
-        const specsConfig = new SpecsConfigFile();
-        specsConfig.buildCommand = config.build;
-        specsConfig.discoveryCommand = config.discover;
-        specsConfig.discoverySeparator = config.separator;
-        specsConfig.runCommand = config.run;
-        specsConfig.debugCommand = config.debug;
-        return specsConfig;
+        return parseSpecsConfigFile(config);
     }
     else {
         vscode.window.showErrorMessage("No specs config file found");
@@ -463,10 +610,12 @@ var TestComponentType;
     TestComponentType[TestComponentType["TestGroup"] = 1] = "TestGroup";
 })(TestComponentType || (exports.TestComponentType = TestComponentType = {}));
 class TestComponent {
+    suiteId;
     type = TestComponentType.Test;
     description;
     group;
-    constructor(description, group = undefined) {
+    constructor(suiteId, description, group = undefined) {
+        this.suiteId = suiteId;
         this.description = description;
         this.group = group;
     }
@@ -481,8 +630,8 @@ class TestComponent {
 class TestGroup extends TestComponent {
     type = TestComponentType.TestGroup;
     children = [];
-    constructor(description = "", group = undefined) {
-        super(description, group);
+    constructor(suiteId = undefined, description = "", group = undefined) {
+        super(suiteId, description, group);
     }
     isRootGroup() {
         return this.group === undefined;
@@ -493,8 +642,8 @@ exports.TestGroup = TestGroup;
 class Test extends TestComponent {
     filePath;
     lineNumber;
-    constructor(description, filePath, lineNumber, group = undefined) {
-        super(description, group);
+    constructor(suiteId, description, filePath, lineNumber, group = undefined) {
+        super(suiteId, description, group);
         this.filePath = filePath;
         this.lineNumber = lineNumber;
     }

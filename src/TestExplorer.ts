@@ -18,7 +18,7 @@ class TestExplorer {
         };
         this._controller.createRunProfile("Run", vscode.TestRunProfileKind.Run, this.run.bind(this), true);
         getSpecsConfig().then((config) => {
-            if (config?.debugCommand)
+            if (config?.anySuitesSupportDebug())
                 this._controller.createRunProfile(
                     "Debug",
                     vscode.TestRunProfileKind.Debug,
@@ -39,7 +39,7 @@ class TestExplorer {
     ) {
         if (testComponent.type === TestComponentType.Test) {
             const test = testComponent as Test;
-            const id = `${test.filePath}:${test.lineNumber}`;
+            const id = `${test.suiteId}|${test.filePath}:${test.lineNumber}`;
             discoveredIds.add(id);
             const filePath = vscode.Uri.joinPath(vscode.workspace.workspaceFolders![0].uri, test.filePath);
             const vscodeTest = this._controller.createTestItem(id, test.description, vscode.Uri.file(filePath.fsPath));
@@ -56,7 +56,7 @@ class TestExplorer {
                     this.registerTestComponent(discoveredIds, child, parentTestItem);
                 });
             } else {
-                const id = `group: ${testGroup.fullDescription()}`;
+                const id = `group: ${testGroup.fullDescription()}|${testGroup.suiteId}}`;
                 discoveredIds.add(id);
                 const vscodeTestGroup = this._controller.createTestItem(id, testGroup.description);
                 if (parentTestItem) parentTestItem.children.add(vscodeTestGroup);
@@ -125,11 +125,12 @@ class TestExplorer {
 
             if (test.id.startsWith("group:")) continue; // or mark passed?
 
-            const [filename, linenumber] = test.id.split(":");
+            const [suiteId, filenameAndLineNumber] = test.id.split("|");
+            const [filename, linenumber] = filenameAndLineNumber.split(":");
 
             const start = Date.now();
             run.started(test);
-            const testResult = await runTest(filename, parseInt(linenumber));
+            const testResult = await runTest(suiteId, filename, parseInt(linenumber));
             if (!testResult) continue;
 
             const duration = Date.now() - start;
@@ -151,10 +152,11 @@ class TestExplorer {
         }
 
         const test = request.include[0];
-        const [filename, linenumber] = test.id.split(":");
+        const [suiteId, filenameAndLineNumber] = test.id.split("|");
+        const [filename, linenumber] = filenameAndLineNumber.split(":");
 
         await buildTestsProject();
-        await debugTest(filename, parseInt(linenumber));
+        await debugTest(suiteId, filename, parseInt(linenumber));
     }
 }
 

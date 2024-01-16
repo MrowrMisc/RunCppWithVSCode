@@ -1,4 +1,4 @@
-#define SPEC_GROUP Tests2
+#define SPEC_GROUP Bar
 
 #include "TestFramework.h"
 

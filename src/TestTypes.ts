@@ -4,6 +4,7 @@ export enum TestComponentType {
 }
 
 export interface ITestComponent {
+    suiteId: string | undefined;
     type: TestComponentType;
     description: string;
     group: TestGroup | undefined;
@@ -11,11 +12,13 @@ export interface ITestComponent {
 }
 
 class TestComponent implements ITestComponent {
+    public suiteId: string | undefined;
     public type = TestComponentType.Test;
     public description;
     public group;
 
-    constructor(description: string, group: TestGroup | undefined = undefined) {
+    constructor(suiteId: string | undefined, description: string, group: TestGroup | undefined = undefined) {
+        this.suiteId = suiteId;
         this.description = description;
         this.group = group;
     }
@@ -30,8 +33,12 @@ class TestComponent implements ITestComponent {
 export class TestGroup extends TestComponent {
     public type = TestComponentType.TestGroup;
     public children: ITestComponent[] = [];
-    constructor(description: string = "", group: TestGroup | undefined = undefined) {
-        super(description, group);
+    constructor(
+        suiteId: string | undefined = undefined,
+        description: string = "",
+        group: TestGroup | undefined = undefined,
+    ) {
+        super(suiteId, description, group);
     }
     isRootGroup(): boolean {
         return this.group === undefined;
@@ -42,8 +49,14 @@ export class TestGroup extends TestComponent {
 export class Test extends TestComponent {
     public filePath: string;
     public lineNumber: number;
-    constructor(description: string, filePath: string, lineNumber: number, group: TestGroup | undefined = undefined) {
-        super(description, group);
+    constructor(
+        suiteId: string,
+        description: string,
+        filePath: string,
+        lineNumber: number,
+        group: TestGroup | undefined = undefined,
+    ) {
+        super(suiteId, description, group);
         this.filePath = filePath;
         this.lineNumber = lineNumber;
     }

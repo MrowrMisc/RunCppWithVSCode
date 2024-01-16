@@ -1,7 +1,30 @@
 {
-    "build": "xmake f -q -m debug && xmake build -w Foo",
-    "discover": "xmake run -q Foo --list",
-    "separator": " > ",
-    "run": "xmake.exe run -q Foo",
-    "debug": "build/windows/x64/debug/Foo.exe"
+    "suites": [
+        {
+            "name": "Has 2 Suites",
+            "group": true,
+            "suites": [
+                {
+                    "name": "Suite Foo",
+                    "target": "Foo"
+                },
+                {
+                    "name": "Suite Bar Cool",
+                    "target": "Bar"
+                }
+            ]
+        },
+        {
+            "name": "Baz",
+            "target": "Baz"
+        }
+    ],
+    "defaults": {
+        "separator": " > ",
+        "pattern": "(?<filepath>.+):(?<linenumber>\\d+):(?<description>.+)",
+        "build": "xmake f -q -m debug && xmake build -w $target",
+        "discover": "xmake run -q $target --list",
+        "run": "xmake.exe run -q $target",
+        "debug": "build/windows/x64/debug/$target.exe"
+    }
 }
