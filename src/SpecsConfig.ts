@@ -5,7 +5,8 @@ export class SpecsConfigFile {
     defaults: SpecsSuiteConfig = new SpecsSuiteConfig();
     suitesById: Map<string, SpecsSuiteConfig> = new Map<string, SpecsSuiteConfig>();
     anySuitesSupportDebug(): boolean {
-        for (const suiteId in this.suitesById) if (this.suitesById.get(suiteId)?.debugExecutable) return true;
+        for (const [suiteId, suiteConfig] of this.suitesById)
+            if (suiteConfig.debugger && suiteConfig.debugExecutable) return true;
         return false;
     }
 }

@@ -164,7 +164,7 @@ class TestExplorer {
             return;
         }
         const test = request.include[0];
-        // TODO: a test can have metadata, right? Instead of this INSANITY? lol...
+        // TODO: a test can have metadata, right? Instead of this INSANITY?
         const [suiteId, filenameAndLineNumber] = test.id.split("|~|~|~|~|");
         const [filename, linenumber] = filenameAndLineNumber.split("|-|-|-|");
         await (0, TestManager_1.buildTestsProject)();
@@ -276,7 +276,8 @@ class TestManager {
             return;
         }
         let testResult = new TestTypes_1.TestResult();
-        const command = `${suiteConfig.runCommand} "${filePath}" "${lineNumber}"`;
+        // TODO HERE! USE REPLACEMENT TOKEN THINGS!
+        const command = suiteConfig.runCommand.replace("{file}", filePath).replace("{line}", lineNumber.toString());
         return new Promise((resolve) => {
             const options = { cwd: vscode.workspace.workspaceFolders?.[0].uri.fsPath };
             OutputChannel_1.SpecsExplorerOutput.appendLine(`Running ${command}`);
@@ -487,8 +488,8 @@ class SpecsConfigFile {
     defaults = new SpecsSuiteConfig();
     suitesById = new Map();
     anySuitesSupportDebug() {
-        for (const suiteId in this.suitesById)
-            if (this.suitesById.get(suiteId)?.debugExecutable)
+        for (const [suiteId, suiteConfig] of this.suitesById)
+            if (suiteConfig.debugger && suiteConfig.debugExecutable)
                 return true;
         return false;
     }

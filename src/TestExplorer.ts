@@ -152,7 +152,7 @@ class TestExplorer {
         }
 
         const test = request.include[0];
-        // TODO: a test can have metadata, right? Instead of this INSANITY? lol...
+        // TODO: a test can have metadata, right? Instead of this INSANITY?
         const [suiteId, filenameAndLineNumber] = test.id.split("|~|~|~|~|");
         const [filename, linenumber] = filenameAndLineNumber.split("|-|-|-|");
 

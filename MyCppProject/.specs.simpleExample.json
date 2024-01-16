@@ -1,0 +1,5 @@
+{
+    "pattern": "(?<filepath>.+):(?<linenumber>\\d+):(?<description>.+)",
+    "discover": "something.exe --list",
+    "run": "something.exe --run"
+}

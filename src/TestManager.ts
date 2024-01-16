@@ -62,7 +62,8 @@ class TestManager {
 
         let testResult: TestResult = new TestResult();
 
-        const command = `${suiteConfig.runCommand} "${filePath}" "${lineNumber}"`;
+        // TODO HERE! USE REPLACEMENT TOKEN THINGS!
+        const command = suiteConfig.runCommand.replace("{file}", filePath).replace("{line}", lineNumber.toString());
 
         return new Promise((resolve) => {
             const options = { cwd: vscode.workspace.workspaceFolders?.[0].uri.fsPath };
