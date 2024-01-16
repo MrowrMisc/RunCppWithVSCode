@@ -1,0 +1,2 @@
+- [ ] Customize the `run` and `debug` CLI invocations (including file and line number)
+- [ ] Read in a 'type' and possibly other debugging options for the `debug` command (for diff languages)

@@ -1,7 +1,4 @@
-import { config } from "process";
 import * as vscode from "vscode";
-
-const SUITE_KEYS = ["build", "discover", "separator", "pattern", "run", "debug", "suites"];
 
 export class SpecsConfigFile {
     suites: SpecsSuiteConfig[] = [];
@@ -21,9 +18,10 @@ export class SpecsSuiteConfig {
     public buildCommand: string | undefined = undefined;
     public discoveryCommand: string = "";
     public discoverySeparator: string | undefined = undefined;
-    public discoveryRegex: string = "(?<filepath>.+):(?<linenumber>\\d+):(?<description>.+)";
+    public discoveryRegex: string | undefined = undefined;
     public runCommand: string = "";
     public debugExecutable: string | undefined = undefined;
+    public debugger: string | undefined = undefined;
     public variables: { [key: string]: string } = {};
 
     constructor(name: string = "", parent: SpecsSuiteConfig | undefined = undefined) {
@@ -53,12 +51,13 @@ function parseSuiteConfig(
     if (suiteJSON.pattern) suiteConfig.discoveryRegex = suiteJSON.pattern;
     if (suiteJSON.run) suiteConfig.runCommand = suiteJSON.run;
     if (suiteJSON.debug) suiteConfig.debugExecutable = suiteJSON.debug;
+    if (suiteJSON.debugger) suiteConfig.debugger = suiteJSON.debugger;
 
     if (suiteJSON.suites)
         for (const childSuiteJSON of suiteJSON.suites)
             suiteConfig.children.push(parseSuiteConfig(childSuiteJSON, specsConfigFile));
 
-    for (const key in suiteJSON) if (!SUITE_KEYS.includes(key)) suiteConfig.variables[key] = suiteJSON[key];
+    for (const key in suiteJSON) suiteConfig.variables[key] = suiteJSON[key];
 
     specsConfigFile.suitesById.set(suiteConfig.idenfifier(), suiteConfig);
 
@@ -81,6 +80,7 @@ function processVariables(suiteConfig: SpecsSuiteConfig) {
         if (suiteConfig.runCommand) suiteConfig.runCommand = suiteConfig.runCommand.replace(replaceText, variableValue);
         if (suiteConfig.debugExecutable)
             suiteConfig.debugExecutable = suiteConfig.debugExecutable.replace(replaceText, variableValue);
+        if (suiteConfig.debugger) suiteConfig.debugger = suiteConfig.debugger.replace(replaceText, variableValue);
     });
 }
 

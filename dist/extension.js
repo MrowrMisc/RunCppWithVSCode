@@ -35,8 +35,8 @@ const vscode = __importStar(__webpack_require__(2));
 const TestManager_1 = __webpack_require__(3);
 const TestTypes_1 = __webpack_require__(6);
 const SpecsConfig_1 = __webpack_require__(5);
-const CONTROLLER_ID = "specs-test-explorer";
-const CONTROLLER_LABEL = "C++ Tests";
+const CONTROLLER_ID = "specs-explorer";
+const CONTROLLER_LABEL = "Specs Explorer";
 class TestExplorer {
     _controller;
     constructor() {
@@ -60,7 +60,7 @@ class TestExplorer {
     registerTestComponent(discoveredIds, testComponent, parentTestItem) {
         if (testComponent.type === TestTypes_1.TestComponentType.Test) {
             const test = testComponent;
-            const id = `${test.suiteId}|${test.filePath}:${test.lineNumber}`;
+            const id = `${test.suiteId}|~|~|~|~|${test.filePath}|-|-|-|${test.lineNumber}`;
             discoveredIds.add(id);
             const filePath = vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, test.filePath);
             const vscodeTest = this._controller.createTestItem(id, test.description, vscode.Uri.file(filePath.fsPath));
@@ -138,8 +138,8 @@ class TestExplorer {
                 continue;
             if (test.id.startsWith("group:"))
                 continue; // or mark passed?
-            const [suiteId, filenameAndLineNumber] = test.id.split("|");
-            const [filename, linenumber] = filenameAndLineNumber.split(":");
+            const [suiteId, filenameAndLineNumber] = test.id.split("|~|~|~|~|");
+            const [filename, linenumber] = filenameAndLineNumber.split("|-|-|-|");
             const start = Date.now();
             run.started(test);
             const testResult = await (0, TestManager_1.runTest)(suiteId, filename, parseInt(linenumber));
@@ -164,8 +164,9 @@ class TestExplorer {
             return;
         }
         const test = request.include[0];
-        const [suiteId, filenameAndLineNumber] = test.id.split("|");
-        const [filename, linenumber] = filenameAndLineNumber.split(":");
+        // TODO: a test can have metadata, right? Instead of this INSANITY? lol...
+        const [suiteId, filenameAndLineNumber] = test.id.split("|~|~|~|~|");
+        const [filename, linenumber] = filenameAndLineNumber.split("|-|-|-|");
         await (0, TestManager_1.buildTestsProject)();
         await (0, TestManager_1.debugTest)(suiteId, filename, parseInt(linenumber));
     }
@@ -217,6 +218,7 @@ const vscode = __importStar(__webpack_require__(2));
 const child_process = __importStar(__webpack_require__(4));
 const SpecsConfig_1 = __webpack_require__(5);
 const TestTypes_1 = __webpack_require__(6);
+const OutputChannel_1 = __webpack_require__(7);
 class TestManager {
     async buildSuite(specsSuiteConfig) {
         if (specsSuiteConfig.isGroup)
@@ -225,14 +227,16 @@ class TestManager {
             const command = specsSuiteConfig.buildCommand;
             const options = { cwd: vscode.workspace.workspaceFolders?.[0].uri.fsPath };
             return new Promise((resolve) => {
+                OutputChannel_1.SpecsExplorerOutput.appendLine(`Running ${command}`);
                 const child = child_process.exec(command, options);
                 child.stdout?.on("data", (data) => {
-                    console.log(data);
+                    OutputChannel_1.SpecsExplorerOutput.appendLine(data);
                 });
                 child.stderr?.on("data", (data) => {
-                    console.log(data);
+                    OutputChannel_1.SpecsExplorerOutput.appendLine(data);
                 });
                 child.on("close", (code) => {
+                    OutputChannel_1.SpecsExplorerOutput.appendLine(`Command ${command} exited with code ${code}`);
                     resolve();
                 });
             });
@@ -275,17 +279,21 @@ class TestManager {
         const command = `${suiteConfig.runCommand} "${filePath}" "${lineNumber}"`;
         return new Promise((resolve) => {
             const options = { cwd: vscode.workspace.workspaceFolders?.[0].uri.fsPath };
+            OutputChannel_1.SpecsExplorerOutput.appendLine(`Running ${command}`);
             const child = child_process.exec(command, options, (error) => {
                 if (error)
                     testResult.testPassed = false;
             });
             child.stdout?.on("data", (data) => {
+                OutputChannel_1.SpecsExplorerOutput.appendLine(data);
                 testResult.testOutput += data;
             });
             child.stderr?.on("data", (data) => {
+                OutputChannel_1.SpecsExplorerOutput.appendLine(data);
                 testResult.testOutput += data;
             });
             child.on("close", (code) => {
+                OutputChannel_1.SpecsExplorerOutput.appendLine(`Command ${command} exited with code ${code}`);
                 testResult.testPassed = code === 0;
                 resolve(testResult);
             });
@@ -298,9 +306,13 @@ class TestManager {
             vscode.window.showErrorMessage("No debug command specified in specs.json");
             return;
         }
+        if (!suiteConfig?.debugger) {
+            vscode.window.showErrorMessage("No debugger specified (e.g. cppvsdbg) in specs.json");
+            return;
+        }
         vscode.debug.startDebugging(vscode.workspace.workspaceFolders?.[0], {
             name: "Debug Test",
-            type: "cppvsdbg",
+            type: suiteConfig.debugger,
             request: "launch",
             program: suiteConfig.debugExecutable,
             args: [filePath, lineNumber.toString()],
@@ -318,17 +330,23 @@ class TestManager {
         if (suiteConfig?.isGroup)
             return;
         if (!suiteConfig?.discoveryCommand) {
-            vscode.window.showErrorMessage("No discovery command specified in specs.json");
+            vscode.window.showErrorMessage("No discovery command (discover:) specified in specs.json");
+            return;
+        }
+        if (!suiteConfig?.discoveryRegex) {
+            vscode.window.showErrorMessage("No discovery regex (pattern:) specified in specs.json");
             return;
         }
         const command = suiteConfig.discoveryCommand;
         const options = { cwd: vscode.workspace.workspaceFolders?.[0].uri.fsPath };
         return new Promise((resolve, reject) => {
+            OutputChannel_1.SpecsExplorerOutput.appendLine(`Running ${command}`);
             const child = child_process.exec(command, options, (error) => {
                 if (error)
                     reject(error);
             });
             child.stdout?.on("data", (data) => {
+                OutputChannel_1.SpecsExplorerOutput.appendLine(data);
                 const rootTestGroup = new TestTypes_1.TestGroup(suiteId, suiteConfig.name);
                 const lines = data.split("\n");
                 for (const line of lines)
@@ -372,13 +390,15 @@ class TestManager {
         if (matches && matches.groups) {
             const filePath = matches.groups.filepath;
             const lineNumber = parseInt(matches.groups.linenumber);
-            const fullTestDescription = matches.groups.description;
+            const fullTestDescription = matches.groups.description.trim();
+            OutputChannel_1.SpecsExplorerOutput.appendLine(`Discovered test: ${fullTestDescription} (${filePath}:${lineNumber})`);
             if (suiteConfig.discoverySeparator) {
                 const testDescriptionParts = fullTestDescription
                     .split(suiteConfig.discoverySeparator)
                     .map((part) => part.trim());
                 const testDescription = testDescriptionParts.pop()?.trim();
                 if (testDescriptionParts.length === 0) {
+                    OutputChannel_1.SpecsExplorerOutput.appendLine(`Adding test ${testDescription} to root group (${suiteId}) [${filePath}:${lineNumber}]`);
                     const test = new TestTypes_1.Test(suiteId, testDescription, filePath, lineNumber);
                     rootTestGroup.children.push(test);
                     return;
@@ -387,15 +407,18 @@ class TestManager {
                 testDescriptionParts.forEach((testGroupDescription) => {
                     let testGroup = currentTestGroup.children.find((child) => child.description === testGroupDescription);
                     if (!testGroup) {
+                        OutputChannel_1.SpecsExplorerOutput.appendLine(`Adding test group ${testGroupDescription} to group ${currentTestGroup.description} (${suiteId}) [${filePath}:${lineNumber}]`);
                         testGroup = new TestTypes_1.TestGroup(suiteId, testGroupDescription, currentTestGroup);
                         currentTestGroup.children.push(testGroup);
                     }
                     currentTestGroup = testGroup;
                 });
+                OutputChannel_1.SpecsExplorerOutput.appendLine(`Adding test ${testDescription} to group ${currentTestGroup.description} (${suiteId}) [${filePath}:${lineNumber}]`);
                 const test = new TestTypes_1.Test(suiteId, testDescription, filePath, lineNumber, currentTestGroup);
                 currentTestGroup.children.push(test);
             }
             else {
+                OutputChannel_1.SpecsExplorerOutput.appendLine(`Adding test ${fullTestDescription.trim()} to root group (${suiteId}) [${filePath}:${lineNumber}]`);
                 const test = new TestTypes_1.Test(suiteId, fullTestDescription.trim(), filePath, lineNumber);
                 rootTestGroup.children.push(test);
             }
@@ -459,7 +482,6 @@ var __importStar = (this && this.__importStar) || function (mod) {
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.getSpecsConfig = exports.SpecsSuiteConfig = exports.SpecsConfigFile = void 0;
 const vscode = __importStar(__webpack_require__(2));
-const SUITE_KEYS = ["build", "discover", "separator", "pattern", "run", "debug", "suites"];
 class SpecsConfigFile {
     suites = [];
     defaults = new SpecsSuiteConfig();
@@ -480,9 +502,10 @@ class SpecsSuiteConfig {
     buildCommand = undefined;
     discoveryCommand = "";
     discoverySeparator = undefined;
-    discoveryRegex = "(?<filepath>.+):(?<linenumber>\\d+):(?<description>.+)";
+    discoveryRegex = undefined;
     runCommand = "";
     debugExecutable = undefined;
+    debugger = undefined;
     variables = {};
     constructor(name = "", parent = undefined) {
         this.name = name;
@@ -514,12 +537,13 @@ function parseSuiteConfig(suiteJSON, specsConfigFile, parentSpecSuite = undefine
         suiteConfig.runCommand = suiteJSON.run;
     if (suiteJSON.debug)
         suiteConfig.debugExecutable = suiteJSON.debug;
+    if (suiteJSON.debugger)
+        suiteConfig.debugger = suiteJSON.debugger;
     if (suiteJSON.suites)
         for (const childSuiteJSON of suiteJSON.suites)
             suiteConfig.children.push(parseSuiteConfig(childSuiteJSON, specsConfigFile));
     for (const key in suiteJSON)
-        if (!SUITE_KEYS.includes(key))
-            suiteConfig.variables[key] = suiteJSON[key];
+        suiteConfig.variables[key] = suiteJSON[key];
     specsConfigFile.suitesById.set(suiteConfig.idenfifier(), suiteConfig);
     return suiteConfig;
 }
@@ -540,6 +564,8 @@ function processVariables(suiteConfig) {
             suiteConfig.runCommand = suiteConfig.runCommand.replace(replaceText, variableValue);
         if (suiteConfig.debugExecutable)
             suiteConfig.debugExecutable = suiteConfig.debugExecutable.replace(replaceText, variableValue);
+        if (suiteConfig.debugger)
+            suiteConfig.debugger = suiteConfig.debugger.replace(replaceText, variableValue);
     });
 }
 function parseSpecsConfigFile(configJSON) {
@@ -662,6 +688,41 @@ class TestResult {
     }
 }
 exports.TestResult = TestResult;
+
+
+/***/ }),
+/* 7 */
+/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
+
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.SpecsExplorerOutput = void 0;
+const vscode = __importStar(__webpack_require__(2));
+const CHANNEL_NAME = "Specs Explorer";
+exports.SpecsExplorerOutput = vscode.window.createOutputChannel(CHANNEL_NAME);
 
 
 /***/ })

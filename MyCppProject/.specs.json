@@ -1,8 +1,28 @@
 {
-    "separator": " > ",
-    "pattern": "(?<filepath>.+):(?<linenumber>\\d+):(?<description>.+)",
-    "build": "xmake f -q -m debug && xmake build -w Foo",
-    "discover": "xmake run -q Foo --list",
-    "run": "xmake.exe run -q Foo",
-    "debug": "build/windows/x64/debug/Foo.exe"
+    "suites": [
+        {
+            "name": "C++ Example",
+            "separator": " > ",
+            "pattern": "(?<filepath>.+):(?<linenumber>\\d+):(?<description>.+)",
+            "build": "xmake f -q -m debug && xmake build -w Tests",
+            "discover": "xmake run -q Tests --list",
+            "run": "xmake.exe run -q Tests",
+            "debug": "build/windows/x64/debug/Tests.exe"
+        },
+        {
+            "name": "Python Example",
+            "discover": "python PythonExample.py --list",
+            "run": "python PythonExample.py",
+            "debug": "PythonExample.py",
+            "debugger": "python"
+        },
+        {
+            "name": "Ruby Example",
+            "discover": "ruby RubyExample.rb --list",
+            "run": "ruby RubyExample.rb"
+        }
+    ],
+    "defaults": {
+        "pattern": "(?<filepath>[^\\|]+)\\|(?<linenumber>\\d+)\\|(?<description>[^\\|]+)"
+    }
 }

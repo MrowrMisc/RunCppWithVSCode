@@ -3,8 +3,8 @@ import { discoverTests, buildTestsProject, runTest, debugTest } from "./TestMana
 import { ITestComponent, Test, TestComponentType, TestGroup } from "./TestTypes";
 import { getSpecsConfig } from "./SpecsConfig";
 
-const CONTROLLER_ID = "specs-test-explorer";
-const CONTROLLER_LABEL = "C++ Tests";
+const CONTROLLER_ID = "specs-explorer";
+const CONTROLLER_LABEL = "Specs Explorer";
 
 class TestExplorer {
     _controller: vscode.TestController;
@@ -39,7 +39,7 @@ class TestExplorer {
     ) {
         if (testComponent.type === TestComponentType.Test) {
             const test = testComponent as Test;
-            const id = `${test.suiteId}|${test.filePath}:${test.lineNumber}`;
+            const id = `${test.suiteId}|~|~|~|~|${test.filePath}|-|-|-|${test.lineNumber}`;
             discoveredIds.add(id);
             const filePath = vscode.Uri.joinPath(vscode.workspace.workspaceFolders![0].uri, test.filePath);
             const vscodeTest = this._controller.createTestItem(id, test.description, vscode.Uri.file(filePath.fsPath));
@@ -125,8 +125,8 @@ class TestExplorer {
 
             if (test.id.startsWith("group:")) continue; // or mark passed?
 
-            const [suiteId, filenameAndLineNumber] = test.id.split("|");
-            const [filename, linenumber] = filenameAndLineNumber.split(":");
+            const [suiteId, filenameAndLineNumber] = test.id.split("|~|~|~|~|");
+            const [filename, linenumber] = filenameAndLineNumber.split("|-|-|-|");
 
             const start = Date.now();
             run.started(test);
@@ -152,8 +152,9 @@ class TestExplorer {
         }
 
         const test = request.include[0];
-        const [suiteId, filenameAndLineNumber] = test.id.split("|");
-        const [filename, linenumber] = filenameAndLineNumber.split(":");
+        // TODO: a test can have metadata, right? Instead of this INSANITY? lol...
+        const [suiteId, filenameAndLineNumber] = test.id.split("|~|~|~|~|");
+        const [filename, linenumber] = filenameAndLineNumber.split("|-|-|-|");
 
         await buildTestsProject();
         await debugTest(suiteId, filename, parseInt(linenumber));
