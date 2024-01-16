@@ -408,12 +408,10 @@ async function buildTestsProject() {
 }
 exports.buildTestsProject = buildTestsProject;
 async function runTest(suiteId, filePath, lineNumber) {
-    await testManager.build();
     return await testManager.run(suiteId, filePath, lineNumber);
 }
 exports.runTest = runTest;
 async function debugTest(suiteId, filePath, lineNumber) {
-    await testManager.build();
     testManager.debug(suiteId, filePath, lineNumber);
 }
 exports.debugTest = debugTest;
@@ -499,7 +497,7 @@ class SpecsSuiteConfig {
 }
 exports.SpecsSuiteConfig = SpecsSuiteConfig;
 function parseSuiteConfig(suiteJSON, specsConfigFile, parentSpecSuite = undefined) {
-    if (!suiteJSON.name)
+    if (suiteJSON.name === undefined)
         throw new Error("Suite name is required");
     const suiteConfig = new SpecsSuiteConfig(suiteJSON.name, parentSpecSuite);
     if (suiteJSON.group)
@@ -546,12 +544,18 @@ function processVariables(suiteConfig) {
 }
 function parseSpecsConfigFile(configJSON) {
     const specsConfig = new SpecsConfigFile();
-    if (configJSON.suites)
+    if (configJSON.suites) {
         for (const suiteJSON of configJSON.suites)
             specsConfig.suites.push(parseSuiteConfig(suiteJSON, specsConfig));
+    }
+    else if (configJSON.run || configJSON.discover) {
+        if (!configJSON.name)
+            configJSON.name = "";
+        specsConfig.suites.push(parseSuiteConfig(configJSON, specsConfig));
+    }
     if (configJSON.defaults) {
         if (!configJSON.defaults.name)
-            configJSON.defaults.name = "default";
+            configJSON.defaults.name = "defaults";
         specsConfig.defaults = parseSuiteConfig(configJSON.defaults, specsConfig);
         specsConfig.defaults.isGroup = true;
     }

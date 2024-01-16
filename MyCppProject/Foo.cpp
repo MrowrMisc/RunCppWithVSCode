@@ -6,8 +6,7 @@ Setup { std::cout << "Outer Setup" << std::endl; }
 
 Describe("Something") {
     Setup { std::cout << "Inner Setup" << std::endl; }
-    Test("Test 1") {}
-    // Test("Test 1") { throw "Kaboom!"; }
+    Test("Test 1") { throw "Kaboom!"; }
 
     Describe("Nested Describe") {
         Test("Test 2") {}

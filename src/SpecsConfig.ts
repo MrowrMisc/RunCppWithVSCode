@@ -1,3 +1,4 @@
+import { config } from "process";
 import * as vscode from "vscode";
 
 const SUITE_KEYS = ["build", "discover", "separator", "pattern", "run", "debug", "suites"];
@@ -41,7 +42,7 @@ function parseSuiteConfig(
     specsConfigFile: SpecsConfigFile,
     parentSpecSuite: SpecsSuiteConfig | undefined = undefined,
 ): SpecsSuiteConfig {
-    if (!suiteJSON.name) throw new Error("Suite name is required");
+    if (suiteJSON.name === undefined) throw new Error("Suite name is required");
 
     const suiteConfig = new SpecsSuiteConfig(suiteJSON.name, parentSpecSuite);
 
@@ -86,11 +87,15 @@ function processVariables(suiteConfig: SpecsSuiteConfig) {
 function parseSpecsConfigFile(configJSON: any): SpecsConfigFile {
     const specsConfig = new SpecsConfigFile();
 
-    if (configJSON.suites)
+    if (configJSON.suites) {
         for (const suiteJSON of configJSON.suites) specsConfig.suites.push(parseSuiteConfig(suiteJSON, specsConfig));
+    } else if (configJSON.run || configJSON.discover) {
+        if (!configJSON.name) configJSON.name = "";
+        specsConfig.suites.push(parseSuiteConfig(configJSON, specsConfig));
+    }
 
     if (configJSON.defaults) {
-        if (!configJSON.defaults.name) configJSON.defaults.name = "default";
+        if (!configJSON.defaults.name) configJSON.defaults.name = "defaults";
         specsConfig.defaults = parseSuiteConfig(configJSON.defaults, specsConfig);
         specsConfig.defaults.isGroup = true;
     }

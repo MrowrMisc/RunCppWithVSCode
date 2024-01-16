@@ -204,12 +204,10 @@ export async function buildTestsProject(): Promise<void> {
 }
 
 export async function runTest(suiteId: string, filePath: string, lineNumber: number): Promise<TestResult | undefined> {
-    await testManager.build();
     return await testManager.run(suiteId, filePath, lineNumber);
 }
 
 export async function debugTest(suiteId: string, filePath: string, lineNumber: number) {
-    await testManager.build();
     testManager.debug(suiteId, filePath, lineNumber);
 }
 
