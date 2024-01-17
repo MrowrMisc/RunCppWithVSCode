@@ -180,9 +180,9 @@ class TestManager {
             const lineNumber = parseInt(matches.groups.linenumber);
             const fullTestDescription = matches.groups.description.trim();
             SpecsExplorerOutput.appendLine(`Discovered test: ${fullTestDescription} (${filePath}:${lineNumber})`);
-            if (suiteConfig.discoverySeparator) {
+            if (suiteConfig.groupSeparator) {
                 const testDescriptionParts = fullTestDescription
-                    .split(suiteConfig.discoverySeparator)
+                    .split(suiteConfig.groupSeparator)
                     .map((part) => part.trim());
 
                 const testDescription = testDescriptionParts.pop()?.trim()!;

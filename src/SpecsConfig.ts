@@ -18,7 +18,7 @@ export class SpecsSuiteConfig {
     public children: SpecsSuiteConfig[] = [];
     public buildCommand: string | undefined = undefined;
     public discoveryCommand: string = "";
-    public discoverySeparator: string | undefined = undefined;
+    public groupSeparator: string | undefined = undefined;
     public discoveryRegex: string | undefined = undefined;
     public runCommand: string = "";
     public debugExecutable: string | undefined = undefined;
@@ -48,12 +48,11 @@ function parseSuiteConfig(
     if (suiteJSON.group) suiteConfig.isGroup = suiteJSON.group;
     if (suiteJSON.build) suiteConfig.buildCommand = suiteJSON.build;
     if (suiteJSON.discover) suiteConfig.discoveryCommand = suiteJSON.discover;
-    if (suiteJSON.separator) suiteConfig.discoverySeparator = suiteJSON.separator;
+    if (suiteJSON.groupSeparator) suiteConfig.groupSeparator = suiteJSON.groupSeparator;
     if (suiteJSON.pattern) suiteConfig.discoveryRegex = suiteJSON.pattern;
     if (suiteJSON.run) suiteConfig.runCommand = suiteJSON.run;
     if (suiteJSON.debug) suiteConfig.debugExecutable = suiteJSON.debug;
     if (suiteJSON.debugger) suiteConfig.debugger = suiteJSON.debugger;
-
     if (suiteJSON.suites)
         for (const childSuiteJSON of suiteJSON.suites)
             suiteConfig.children.push(parseSuiteConfig(childSuiteJSON, specsConfigFile));
@@ -74,8 +73,8 @@ function processVariables(suiteConfig: SpecsSuiteConfig) {
             suiteConfig.buildCommand = suiteConfig.buildCommand.replace(replaceText, variableValue);
         if (suiteConfig.discoveryCommand)
             suiteConfig.discoveryCommand = suiteConfig.discoveryCommand.replace(replaceText, variableValue);
-        if (suiteConfig.discoverySeparator)
-            suiteConfig.discoverySeparator = suiteConfig.discoverySeparator.replace(replaceText, variableValue);
+        if (suiteConfig.groupSeparator)
+            suiteConfig.groupSeparator = suiteConfig.groupSeparator.replace(replaceText, variableValue);
         if (suiteConfig.discoveryRegex)
             suiteConfig.discoveryRegex = suiteConfig.discoveryRegex.replace(replaceText, variableValue);
         if (suiteConfig.runCommand) suiteConfig.runCommand = suiteConfig.runCommand.replace(replaceText, variableValue);
@@ -105,8 +104,7 @@ function parseSpecsConfigFile(configJSON: any): SpecsConfigFile {
         if (!suiteConfig.isGroup) {
             if (!suiteConfig.buildCommand) suiteConfig.buildCommand = specsConfig.defaults.buildCommand;
             if (!suiteConfig.discoveryCommand) suiteConfig.discoveryCommand = specsConfig.defaults.discoveryCommand;
-            if (!suiteConfig.discoverySeparator)
-                suiteConfig.discoverySeparator = specsConfig.defaults.discoverySeparator;
+            if (!suiteConfig.groupSeparator) suiteConfig.groupSeparator = specsConfig.defaults.groupSeparator;
             if (!suiteConfig.discoveryRegex) suiteConfig.discoveryRegex = specsConfig.defaults.discoveryRegex;
             if (!suiteConfig.runCommand) suiteConfig.runCommand = specsConfig.defaults.runCommand;
             if (!suiteConfig.debugExecutable) suiteConfig.debugExecutable = specsConfig.defaults.debugExecutable;

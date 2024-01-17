@@ -2,10 +2,11 @@
     "suites": [
         {
             "name": "C++ Example",
-            "separator": " > ",
             "pattern": "(?<filepath>.+):(?<linenumber>\\d+):(?<description>.+)",
             "build": "xmake f -q -m debug && xmake build -w Tests",
             "discover": "xmake run -q Tests --list",
+            "groupSeparator": " > ",
+            "tagSeparator": "TODO",
             "run": "xmake.exe run -q Tests {file} {line}",
             "debug": "build/windows/x64/debug/Tests.exe",
             "debugger": "cppvsdbg"
