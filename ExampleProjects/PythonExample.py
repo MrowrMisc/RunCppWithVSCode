@@ -1,8 +1,18 @@
+# Tags decorator (used by tests below)
+
+def tags(*args):
+    def decorator(func):
+        func.tags = list(args)
+        return func
+    return decorator
+
 # Examples test:
 
+@tags("hello", "world")
 def test_should_pass():
     assert 1 == 1
 
+@tags("hello", "foo")
 def test_should_fail():
     x = 69
     assert 1 == 2
@@ -21,6 +31,7 @@ class Test:
     func: callable
     line: int
     file: str
+    tags: list[str]
 
     def run(self) -> bool:
         try:
@@ -39,12 +50,13 @@ def run_test_framework():
         if isinstance(obj, types.FunctionType) and name.startswith("test_"):
             absolute_filepath = Path(obj.__code__.co_filename)
             relative_filepath = absolute_filepath.relative_to(Path(__file__).parent)
-            tests.append(Test(name, obj, obj.__code__.co_firstlineno, str(relative_filepath)))
+            test_tags = getattr(obj, 'tags', [])
+            tests.append(Test(name, obj, obj.__code__.co_firstlineno, str(relative_filepath), test_tags))
 
     # python PythonExample.py --list
     if len(sys.argv) == 2 and sys.argv[1] == "--list":
         for test in tests:
-            print(f"{test.file}|{test.line}|{test.name}")
+            print(f"{test.file}|{test.line}|{test.name}|{','.join(test.tags)}")
 
     # python PythonExample.py [file name] [line number] --> find and run the test on that line
     elif len(sys.argv) == 3:
