@@ -163,11 +163,11 @@ class TestManager {
             if (suiteConfig?.discoveryCommand) promises.push(this.discoverSuite(suiteConfig.idenfifier()));
         });
         return Promise.all(promises).then((results) => {
-            const rootTestGroup = new TestGroup();
+            const testComponents: ITestComponent[] = [];
             results.forEach((result) => {
-                if (result) rootTestGroup.children.push(...result);
+                if (result) testComponents.push(...result);
             });
-            return rootTestGroup.children;
+            return testComponents;
         });
     }
 
@@ -175,9 +175,11 @@ class TestManager {
         const suiteId = suiteConfig.idenfifier();
         const testInfoRegex = new RegExp(suiteConfig.discoveryRegex!);
         const matches = testInfoRegex.exec(line);
+        const tagsSeparator = suiteConfig.tagsSeparator ? suiteConfig.tagsSeparator : ",";
         if (matches && matches.groups) {
             const filePath = matches.groups.filepath;
-            const lineNumber = parseInt(matches.groups.linenumber);
+            const lineNumber = matches.groups.linenumber ? parseInt(matches.groups.linenumber) : 0;
+            const tags = matches.groups.tags ? matches.groups.tags.split(tagsSeparator) : [];
             const fullTestDescription = matches.groups.description.trim();
             SpecsExplorerOutput.appendLine(`Discovered test: ${fullTestDescription} (${filePath}:${lineNumber})`);
             if (suiteConfig.groupSeparator) {
@@ -191,7 +193,7 @@ class TestManager {
                     SpecsExplorerOutput.appendLine(
                         `Adding test ${testDescription} to root group (${suiteId}) [${filePath}:${lineNumber}]`,
                     );
-                    const test = new Test(suiteId, testDescription, filePath, lineNumber);
+                    const test = new Test(suiteId, testDescription, filePath, lineNumber, tags);
                     rootTestGroup.children.push(test);
                     return;
                 }
@@ -214,14 +216,14 @@ class TestManager {
                 SpecsExplorerOutput.appendLine(
                     `Adding test ${testDescription} to group ${currentTestGroup.description} (${suiteId}) [${filePath}:${lineNumber}]`,
                 );
-                const test = new Test(suiteId, testDescription, filePath, lineNumber, currentTestGroup);
+                const test = new Test(suiteId, testDescription, filePath, lineNumber, tags, currentTestGroup);
 
                 currentTestGroup.children.push(test);
             } else {
                 SpecsExplorerOutput.appendLine(
                     `Adding test ${fullTestDescription.trim()} to root group (${suiteId}) [${filePath}:${lineNumber}]`,
                 );
-                const test = new Test(suiteId, fullTestDescription.trim(), filePath, lineNumber);
+                const test = new Test(suiteId, fullTestDescription.trim(), filePath, lineNumber, tags);
                 rootTestGroup.children.push(test);
             }
         }

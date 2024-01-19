@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { discoverTests, buildTestsProject, runTest, debugTest } from "./TestManager";
 import { ITestComponent, Test, TestComponentType, TestGroup } from "./TestTypes";
 import { getSpecsConfig } from "./SpecsConfig";
+import { associateTestItemAndTest, testItemToTest } from "./TestItems";
 
 const CONTROLLER_ID = "specs-explorer";
 const CONTROLLER_LABEL = "Specs Explorer";
@@ -17,6 +18,8 @@ class TestExplorer {
             else await this.refresh();
         };
         this._controller.createRunProfile("Run", vscode.TestRunProfileKind.Run, this.run.bind(this), true);
+
+        // TODO: update so that only tests with the 'debuggable' tag are debuggable! based on the suite config :)
         getSpecsConfig().then((config) => {
             if (config?.anySuitesSupportDebug())
                 this._controller.createRunProfile(
@@ -39,10 +42,14 @@ class TestExplorer {
     ) {
         if (testComponent.type === TestComponentType.Test) {
             const test = testComponent as Test;
-            const id = `${test.suiteId}|~|~|~|~|${test.filePath}|-|-|-|${test.lineNumber}`;
-            discoveredIds.add(id);
+            discoveredIds.add(test.identifier());
             const filePath = vscode.Uri.joinPath(vscode.workspace.workspaceFolders![0].uri, test.filePath);
-            const vscodeTest = this._controller.createTestItem(id, test.description, vscode.Uri.file(filePath.fsPath));
+            const vscodeTest = this._controller.createTestItem(
+                test.identifier(),
+                test.description,
+                vscode.Uri.file(filePath.fsPath),
+            );
+            associateTestItemAndTest(vscodeTest, test);
             vscodeTest.range = new vscode.Range(
                 new vscode.Position(test.lineNumber - 1, 0),
                 new vscode.Position(test.lineNumber - 1, 0),
@@ -56,9 +63,8 @@ class TestExplorer {
                     this.registerTestComponent(discoveredIds, child, parentTestItem);
                 });
             } else {
-                const id = `group: ${testGroup.fullDescription()}|${testGroup.suiteId}}`;
-                discoveredIds.add(id);
-                const vscodeTestGroup = this._controller.createTestItem(id, testGroup.description);
+                discoveredIds.add(testGroup.identifier());
+                const vscodeTestGroup = this._controller.createTestItem(testGroup.identifier(), testGroup.description);
                 if (parentTestItem) parentTestItem.children.add(vscodeTestGroup);
                 else this._controller.items.add(vscodeTestGroup);
                 testGroup.children.forEach((child) => {
@@ -119,23 +125,21 @@ class TestExplorer {
         run.appendOutput(`Running ${testsToRun.length} tests\n`);
 
         while (testsToRun.length > 0 && !token.isCancellationRequested) {
-            const test = testsToRun.pop()!;
+            const testItem = testsToRun.pop()!;
+            if (request.exclude?.includes(testItem)) continue;
 
-            if (request.exclude?.includes(test)) continue;
-
-            if (test.id.startsWith("group:")) continue; // or mark passed?
-
-            const [suiteId, filenameAndLineNumber] = test.id.split("|~|~|~|~|");
-            const [filename, linenumber] = filenameAndLineNumber.split("|-|-|-|");
+            const testComponent = testItemToTest(testItem);
+            if (testComponent.type === TestComponentType.TestGroup) continue;
+            const test = testComponent as Test;
 
             const start = Date.now();
-            run.started(test);
-            const testResult = await runTest(suiteId, filename, parseInt(linenumber));
+            run.started(testItem);
+            const testResult = await runTest(test.suiteId, test.filePath, test.lineNumber);
             if (!testResult) continue;
 
             const duration = Date.now() - start;
-            if (testResult.testPassed) run.passed(test, duration);
-            else run.failed(test, new vscode.TestMessage(testResult.testOutput), duration);
+            if (testResult.testPassed) run.passed(testItem, duration);
+            else run.failed(testItem, new vscode.TestMessage(testResult.testOutput), duration);
         }
         run.end();
     }
@@ -151,13 +155,13 @@ class TestExplorer {
             return;
         }
 
-        const test = request.include[0];
-        // TODO: a test can have metadata, right? Instead of this INSANITY?
-        const [suiteId, filenameAndLineNumber] = test.id.split("|~|~|~|~|");
-        const [filename, linenumber] = filenameAndLineNumber.split("|-|-|-|");
+        const testItem = request.include[0];
+        const testComponent = testItemToTest(testItem);
+        if (testComponent.type === TestComponentType.TestGroup) return;
+        const test = testComponent as Test;
 
         await buildTestsProject();
-        await debugTest(suiteId, filename, parseInt(linenumber));
+        await debugTest(test.suiteId, test.filePath, test.lineNumber);
     }
 }
 

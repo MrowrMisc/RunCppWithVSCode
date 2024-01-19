@@ -4,7 +4,7 @@ export enum TestComponentType {
 }
 
 export interface ITestComponent {
-    suiteId: string | undefined;
+    suiteId: string;
     type: TestComponentType;
     description: string;
     group: TestGroup | undefined;
@@ -12,12 +12,12 @@ export interface ITestComponent {
 }
 
 class TestComponent implements ITestComponent {
-    public suiteId: string | undefined;
+    public suiteId: string;
     public type = TestComponentType.Test;
     public description;
     public group;
 
-    constructor(suiteId: string | undefined, description: string, group: TestGroup | undefined = undefined) {
+    constructor(suiteId: string, description: string, group: TestGroup | undefined = undefined) {
         this.suiteId = suiteId;
         this.description = description;
         this.group = group;
@@ -33,15 +33,14 @@ class TestComponent implements ITestComponent {
 export class TestGroup extends TestComponent {
     public type = TestComponentType.TestGroup;
     public children: ITestComponent[] = [];
-    constructor(
-        suiteId: string | undefined = undefined,
-        description: string = "",
-        group: TestGroup | undefined = undefined,
-    ) {
+    constructor(suiteId: string, description: string = "", group: TestGroup | undefined = undefined) {
         super(suiteId, description, group);
     }
     isRootGroup(): boolean {
         return this.group === undefined;
+    }
+    identifier(): string {
+        return `[GROUP]--${this.suiteId}--${this.description}`;
     }
 }
 
@@ -49,16 +48,21 @@ export class TestGroup extends TestComponent {
 export class Test extends TestComponent {
     public filePath: string;
     public lineNumber: number;
+    public tags: string[] = [];
     constructor(
         suiteId: string,
         description: string,
-        filePath: string,
-        lineNumber: number,
+        filePath: string, // TODO: allow undefined
+        lineNumber: number, // TODO: allow undefined
+        tags: string[] = [],
         group: TestGroup | undefined = undefined,
     ) {
         super(suiteId, description, group);
         this.filePath = filePath;
         this.lineNumber = lineNumber;
+    }
+    identifier(): string {
+        return `${this.suiteId}--${this.filePath}--${this.lineNumber}--${this.description}`;
     }
 }
 

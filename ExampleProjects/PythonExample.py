@@ -56,7 +56,7 @@ def run_test_framework():
     # python PythonExample.py --list
     if len(sys.argv) == 2 and sys.argv[1] == "--list":
         for test in tests:
-            print(f"{test.file}|{test.line}|{test.name}|{','.join(test.tags)}")
+            print(f"{test.file}|{test.line}|{','.join(test.tags)}|{test.name}")
 
     # python PythonExample.py [file name] [line number] --> find and run the test on that line
     elif len(sys.argv) == 3:

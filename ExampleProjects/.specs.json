@@ -25,6 +25,6 @@
         }
     ],
     "defaults": {
-        "pattern": "(?<filepath>[^\\|]+)\\|(?<linenumber>\\d+)\\|(?<description>[^\\|]+)"
+        "pattern": "(?<filepath>[^\\|]+)\\|(?<linenumber>\\d+)\\|(?<tags>[^\\|]+)\\|(?<description>[^\\|]+)"
     }
 }

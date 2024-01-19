@@ -19,6 +19,7 @@ export class SpecsSuiteConfig {
     public buildCommand: string | undefined = undefined;
     public discoveryCommand: string = "";
     public groupSeparator: string | undefined = undefined;
+    public tagsSeparator: string | undefined = undefined;
     public discoveryRegex: string | undefined = undefined;
     public runCommand: string = "";
     public debugExecutable: string | undefined = undefined;
@@ -49,6 +50,7 @@ function parseSuiteConfig(
     if (suiteJSON.build) suiteConfig.buildCommand = suiteJSON.build;
     if (suiteJSON.discover) suiteConfig.discoveryCommand = suiteJSON.discover;
     if (suiteJSON.groupSeparator) suiteConfig.groupSeparator = suiteJSON.groupSeparator;
+    if (suiteJSON.tagsSeparator) suiteConfig.tagsSeparator = suiteJSON.tagsSeparator;
     if (suiteJSON.pattern) suiteConfig.discoveryRegex = suiteJSON.pattern;
     if (suiteJSON.run) suiteConfig.runCommand = suiteJSON.run;
     if (suiteJSON.debug) suiteConfig.debugExecutable = suiteJSON.debug;
@@ -75,6 +77,8 @@ function processVariables(suiteConfig: SpecsSuiteConfig) {
             suiteConfig.discoveryCommand = suiteConfig.discoveryCommand.replace(replaceText, variableValue);
         if (suiteConfig.groupSeparator)
             suiteConfig.groupSeparator = suiteConfig.groupSeparator.replace(replaceText, variableValue);
+        if (suiteConfig.tagsSeparator)
+            suiteConfig.tagsSeparator = suiteConfig.tagsSeparator.replace(replaceText, variableValue);
         if (suiteConfig.discoveryRegex)
             suiteConfig.discoveryRegex = suiteConfig.discoveryRegex.replace(replaceText, variableValue);
         if (suiteConfig.runCommand) suiteConfig.runCommand = suiteConfig.runCommand.replace(replaceText, variableValue);
@@ -105,9 +109,11 @@ function parseSpecsConfigFile(configJSON: any): SpecsConfigFile {
             if (!suiteConfig.buildCommand) suiteConfig.buildCommand = specsConfig.defaults.buildCommand;
             if (!suiteConfig.discoveryCommand) suiteConfig.discoveryCommand = specsConfig.defaults.discoveryCommand;
             if (!suiteConfig.groupSeparator) suiteConfig.groupSeparator = specsConfig.defaults.groupSeparator;
+            if (!suiteConfig.tagsSeparator) suiteConfig.tagsSeparator = specsConfig.defaults.tagsSeparator;
             if (!suiteConfig.discoveryRegex) suiteConfig.discoveryRegex = specsConfig.defaults.discoveryRegex;
             if (!suiteConfig.runCommand) suiteConfig.runCommand = specsConfig.defaults.runCommand;
             if (!suiteConfig.debugExecutable) suiteConfig.debugExecutable = specsConfig.defaults.debugExecutable;
+            if (!suiteConfig.debugger) suiteConfig.debugger = specsConfig.defaults.debugger;
             for (const key in specsConfig.defaults.variables)
                 if (!suiteConfig.variables[key]) suiteConfig.variables[key] = specsConfig.defaults.variables[key];
         }
@@ -133,6 +139,15 @@ async function readSpecsConfigFile(): Promise<SpecsConfigFile | undefined> {
 
 const specConfigFileName = ".specs.json";
 
+const latestSpecsConfigCacheMs: number = 500;
+let latestSpecsConfigGetTime: number = 0;
+let latestSpecsConfigFile: SpecsConfigFile | undefined = undefined;
+
 export async function getSpecsConfig(): Promise<SpecsConfigFile | undefined> {
-    return await readSpecsConfigFile();
+    if (latestSpecsConfigFile && new Date().getTime() - latestSpecsConfigGetTime < latestSpecsConfigCacheMs)
+        return latestSpecsConfigFile;
+
+    latestSpecsConfigFile = await readSpecsConfigFile();
+    latestSpecsConfigGetTime = new Date().getTime();
+    return latestSpecsConfigFile;
 }

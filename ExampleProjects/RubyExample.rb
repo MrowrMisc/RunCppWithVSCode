@@ -57,7 +57,7 @@ def run_test_framework
   when 1
     if ARGV[0] == '--list'
       # List all tests
-      tests.each { |test| puts "#{test.file}|#{test.line}|#{test.name}|#{test.tags.join(',')}" }
+      tests.each { |test| puts "#{test.file}|#{test.line}|#{test.tags.join(',')}|#{test.name}" }
     else
       puts "Usage: ruby #{__FILE__} [--list] [file name] [line number]"
     end

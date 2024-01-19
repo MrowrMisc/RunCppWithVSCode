@@ -35,6 +35,7 @@ const vscode = __importStar(__webpack_require__(2));
 const TestManager_1 = __webpack_require__(3);
 const TestTypes_1 = __webpack_require__(6);
 const SpecsConfig_1 = __webpack_require__(5);
+const TestItems_1 = __webpack_require__(8);
 const CONTROLLER_ID = "specs-explorer";
 const CONTROLLER_LABEL = "Specs Explorer";
 class TestExplorer {
@@ -49,6 +50,7 @@ class TestExplorer {
                 await this.refresh();
         };
         this._controller.createRunProfile("Run", vscode.TestRunProfileKind.Run, this.run.bind(this), true);
+        // TODO: update so that only tests with the 'debuggable' tag are debuggable! based on the suite config :)
         (0, SpecsConfig_1.getSpecsConfig)().then((config) => {
             if (config?.anySuitesSupportDebug())
                 this._controller.createRunProfile("Debug", vscode.TestRunProfileKind.Debug, this.debug.bind(this), true);
@@ -60,10 +62,10 @@ class TestExplorer {
     registerTestComponent(discoveredIds, testComponent, parentTestItem) {
         if (testComponent.type === TestTypes_1.TestComponentType.Test) {
             const test = testComponent;
-            const id = `${test.suiteId}|~|~|~|~|${test.filePath}|-|-|-|${test.lineNumber}`;
-            discoveredIds.add(id);
+            discoveredIds.add(test.identifier());
             const filePath = vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, test.filePath);
-            const vscodeTest = this._controller.createTestItem(id, test.description, vscode.Uri.file(filePath.fsPath));
+            const vscodeTest = this._controller.createTestItem(test.identifier(), test.description, vscode.Uri.file(filePath.fsPath));
+            (0, TestItems_1.associateTestItemAndTest)(vscodeTest, test);
             vscodeTest.range = new vscode.Range(new vscode.Position(test.lineNumber - 1, 0), new vscode.Position(test.lineNumber - 1, 0));
             if (parentTestItem)
                 parentTestItem.children.add(vscodeTest);
@@ -78,9 +80,8 @@ class TestExplorer {
                 });
             }
             else {
-                const id = `group: ${testGroup.fullDescription()}|${testGroup.suiteId}}`;
-                discoveredIds.add(id);
-                const vscodeTestGroup = this._controller.createTestItem(id, testGroup.description);
+                discoveredIds.add(testGroup.identifier());
+                const vscodeTestGroup = this._controller.createTestItem(testGroup.identifier(), testGroup.description);
                 if (parentTestItem)
                     parentTestItem.children.add(vscodeTestGroup);
                 else
@@ -133,23 +134,23 @@ class TestExplorer {
             });
         run.appendOutput(`Running ${testsToRun.length} tests\n`);
         while (testsToRun.length > 0 && !token.isCancellationRequested) {
-            const test = testsToRun.pop();
-            if (request.exclude?.includes(test))
+            const testItem = testsToRun.pop();
+            if (request.exclude?.includes(testItem))
                 continue;
-            if (test.id.startsWith("group:"))
-                continue; // or mark passed?
-            const [suiteId, filenameAndLineNumber] = test.id.split("|~|~|~|~|");
-            const [filename, linenumber] = filenameAndLineNumber.split("|-|-|-|");
+            const testComponent = (0, TestItems_1.testItemToTest)(testItem);
+            if (testComponent.type === TestTypes_1.TestComponentType.TestGroup)
+                continue;
+            const test = testComponent;
             const start = Date.now();
-            run.started(test);
-            const testResult = await (0, TestManager_1.runTest)(suiteId, filename, parseInt(linenumber));
+            run.started(testItem);
+            const testResult = await (0, TestManager_1.runTest)(test.suiteId, test.filePath, test.lineNumber);
             if (!testResult)
                 continue;
             const duration = Date.now() - start;
             if (testResult.testPassed)
-                run.passed(test, duration);
+                run.passed(testItem, duration);
             else
-                run.failed(test, new vscode.TestMessage(testResult.testOutput), duration);
+                run.failed(testItem, new vscode.TestMessage(testResult.testOutput), duration);
         }
         run.end();
     }
@@ -163,12 +164,13 @@ class TestExplorer {
             vscode.window.showErrorMessage("Debugging multiple tests is not supported");
             return;
         }
-        const test = request.include[0];
-        // TODO: a test can have metadata, right? Instead of this INSANITY?
-        const [suiteId, filenameAndLineNumber] = test.id.split("|~|~|~|~|");
-        const [filename, linenumber] = filenameAndLineNumber.split("|-|-|-|");
+        const testItem = request.include[0];
+        const testComponent = (0, TestItems_1.testItemToTest)(testItem);
+        if (testComponent.type === TestTypes_1.TestComponentType.TestGroup)
+            return;
+        const test = testComponent;
         await (0, TestManager_1.buildTestsProject)();
-        await (0, TestManager_1.debugTest)(suiteId, filename, parseInt(linenumber));
+        await (0, TestManager_1.debugTest)(test.suiteId, test.filePath, test.lineNumber);
     }
 }
 const testExplorer = new TestExplorer();
@@ -376,21 +378,23 @@ class TestManager {
                 promises.push(this.discoverSuite(suiteConfig.idenfifier()));
         });
         return Promise.all(promises).then((results) => {
-            const rootTestGroup = new TestTypes_1.TestGroup();
+            const testComponents = [];
             results.forEach((result) => {
                 if (result)
-                    rootTestGroup.children.push(...result);
+                    testComponents.push(...result);
             });
-            return rootTestGroup.children;
+            return testComponents;
         });
     }
     parseTestLine(line, suiteConfig, rootTestGroup) {
         const suiteId = suiteConfig.idenfifier();
         const testInfoRegex = new RegExp(suiteConfig.discoveryRegex);
         const matches = testInfoRegex.exec(line);
+        const tagsSeparator = suiteConfig.tagsSeparator ? suiteConfig.tagsSeparator : ",";
         if (matches && matches.groups) {
             const filePath = matches.groups.filepath;
-            const lineNumber = parseInt(matches.groups.linenumber);
+            const lineNumber = matches.groups.linenumber ? parseInt(matches.groups.linenumber) : 0;
+            const tags = matches.groups.tags ? matches.groups.tags.split(tagsSeparator) : [];
             const fullTestDescription = matches.groups.description.trim();
             OutputChannel_1.SpecsExplorerOutput.appendLine(`Discovered test: ${fullTestDescription} (${filePath}:${lineNumber})`);
             if (suiteConfig.groupSeparator) {
@@ -400,7 +404,7 @@ class TestManager {
                 const testDescription = testDescriptionParts.pop()?.trim();
                 if (testDescriptionParts.length === 0) {
                     OutputChannel_1.SpecsExplorerOutput.appendLine(`Adding test ${testDescription} to root group (${suiteId}) [${filePath}:${lineNumber}]`);
-                    const test = new TestTypes_1.Test(suiteId, testDescription, filePath, lineNumber);
+                    const test = new TestTypes_1.Test(suiteId, testDescription, filePath, lineNumber, tags);
                     rootTestGroup.children.push(test);
                     return;
                 }
@@ -415,12 +419,12 @@ class TestManager {
                     currentTestGroup = testGroup;
                 });
                 OutputChannel_1.SpecsExplorerOutput.appendLine(`Adding test ${testDescription} to group ${currentTestGroup.description} (${suiteId}) [${filePath}:${lineNumber}]`);
-                const test = new TestTypes_1.Test(suiteId, testDescription, filePath, lineNumber, currentTestGroup);
+                const test = new TestTypes_1.Test(suiteId, testDescription, filePath, lineNumber, tags, currentTestGroup);
                 currentTestGroup.children.push(test);
             }
             else {
                 OutputChannel_1.SpecsExplorerOutput.appendLine(`Adding test ${fullTestDescription.trim()} to root group (${suiteId}) [${filePath}:${lineNumber}]`);
-                const test = new TestTypes_1.Test(suiteId, fullTestDescription.trim(), filePath, lineNumber);
+                const test = new TestTypes_1.Test(suiteId, fullTestDescription.trim(), filePath, lineNumber, tags);
                 rootTestGroup.children.push(test);
             }
         }
@@ -503,6 +507,7 @@ class SpecsSuiteConfig {
     buildCommand = undefined;
     discoveryCommand = "";
     groupSeparator = undefined;
+    tagsSeparator = undefined;
     discoveryRegex = undefined;
     runCommand = "";
     debugExecutable = undefined;
@@ -532,6 +537,8 @@ function parseSuiteConfig(suiteJSON, specsConfigFile, parentSpecSuite = undefine
         suiteConfig.discoveryCommand = suiteJSON.discover;
     if (suiteJSON.groupSeparator)
         suiteConfig.groupSeparator = suiteJSON.groupSeparator;
+    if (suiteJSON.tagsSeparator)
+        suiteConfig.tagsSeparator = suiteJSON.tagsSeparator;
     if (suiteJSON.pattern)
         suiteConfig.discoveryRegex = suiteJSON.pattern;
     if (suiteJSON.run)
@@ -559,6 +566,8 @@ function processVariables(suiteConfig) {
             suiteConfig.discoveryCommand = suiteConfig.discoveryCommand.replace(replaceText, variableValue);
         if (suiteConfig.groupSeparator)
             suiteConfig.groupSeparator = suiteConfig.groupSeparator.replace(replaceText, variableValue);
+        if (suiteConfig.tagsSeparator)
+            suiteConfig.tagsSeparator = suiteConfig.tagsSeparator.replace(replaceText, variableValue);
         if (suiteConfig.discoveryRegex)
             suiteConfig.discoveryRegex = suiteConfig.discoveryRegex.replace(replaceText, variableValue);
         if (suiteConfig.runCommand)
@@ -594,12 +603,16 @@ function parseSpecsConfigFile(configJSON) {
                 suiteConfig.discoveryCommand = specsConfig.defaults.discoveryCommand;
             if (!suiteConfig.groupSeparator)
                 suiteConfig.groupSeparator = specsConfig.defaults.groupSeparator;
+            if (!suiteConfig.tagsSeparator)
+                suiteConfig.tagsSeparator = specsConfig.defaults.tagsSeparator;
             if (!suiteConfig.discoveryRegex)
                 suiteConfig.discoveryRegex = specsConfig.defaults.discoveryRegex;
             if (!suiteConfig.runCommand)
                 suiteConfig.runCommand = specsConfig.defaults.runCommand;
             if (!suiteConfig.debugExecutable)
                 suiteConfig.debugExecutable = specsConfig.defaults.debugExecutable;
+            if (!suiteConfig.debugger)
+                suiteConfig.debugger = specsConfig.defaults.debugger;
             for (const key in specsConfig.defaults.variables)
                 if (!suiteConfig.variables[key])
                     suiteConfig.variables[key] = specsConfig.defaults.variables[key];
@@ -622,8 +635,15 @@ async function readSpecsConfigFile() {
     }
 }
 const specConfigFileName = ".specs.json";
+const latestSpecsConfigCacheMs = 500;
+let latestSpecsConfigGetTime = 0;
+let latestSpecsConfigFile = undefined;
 async function getSpecsConfig() {
-    return await readSpecsConfigFile();
+    if (latestSpecsConfigFile && new Date().getTime() - latestSpecsConfigGetTime < latestSpecsConfigCacheMs)
+        return latestSpecsConfigFile;
+    latestSpecsConfigFile = await readSpecsConfigFile();
+    latestSpecsConfigGetTime = new Date().getTime();
+    return latestSpecsConfigFile;
 }
 exports.getSpecsConfig = getSpecsConfig;
 
@@ -661,11 +681,14 @@ class TestComponent {
 class TestGroup extends TestComponent {
     type = TestComponentType.TestGroup;
     children = [];
-    constructor(suiteId = undefined, description = "", group = undefined) {
+    constructor(suiteId, description = "", group = undefined) {
         super(suiteId, description, group);
     }
     isRootGroup() {
         return this.group === undefined;
+    }
+    identifier() {
+        return `[GROUP]--${this.suiteId}--${this.description}`;
     }
 }
 exports.TestGroup = TestGroup;
@@ -673,10 +696,16 @@ exports.TestGroup = TestGroup;
 class Test extends TestComponent {
     filePath;
     lineNumber;
-    constructor(suiteId, description, filePath, lineNumber, group = undefined) {
+    tags = [];
+    constructor(suiteId, description, filePath, // TODO: allow undefined
+    lineNumber, // TODO: allow undefined
+    tags = [], group = undefined) {
         super(suiteId, description, group);
         this.filePath = filePath;
         this.lineNumber = lineNumber;
+    }
+    identifier() {
+        return `${this.suiteId}--${this.filePath}--${this.lineNumber}--${this.description}`;
     }
 }
 exports.Test = Test;
@@ -724,6 +753,30 @@ exports.SpecsExplorerOutput = void 0;
 const vscode = __importStar(__webpack_require__(2));
 const CHANNEL_NAME = "Specs Explorer";
 exports.SpecsExplorerOutput = vscode.window.createOutputChannel(CHANNEL_NAME);
+
+
+/***/ }),
+/* 8 */
+/***/ ((__unused_webpack_module, exports) => {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.associateTestItemAndTest = exports.testToTestItem = exports.testItemToTest = void 0;
+const testItemsToTestComponent = new WeakMap();
+const testComponentToTestItem = new WeakMap();
+function testItemToTest(testItem) {
+    return testItemsToTestComponent.get(testItem);
+}
+exports.testItemToTest = testItemToTest;
+function testToTestItem(testComponent) {
+    return testComponentToTestItem.get(testComponent);
+}
+exports.testToTestItem = testToTestItem;
+function associateTestItemAndTest(testItem, testComponent) {
+    testItemsToTestComponent.set(testItem, testComponent);
+    testComponentToTestItem.set(testComponent, testItem);
+}
+exports.associateTestItemAndTest = associateTestItemAndTest;
 
 
 /***/ })
