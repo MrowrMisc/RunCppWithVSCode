@@ -3,3 +3,6 @@ compile_commands
 .xmake
 build
 *Flashpost*
+.vscode-test
+node_modules
+*.vsix
