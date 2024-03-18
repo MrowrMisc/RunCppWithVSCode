@@ -1,8 +1,8 @@
 import * as vscode from "vscode";
-import { discoverTests, buildTestsProject, runTest, debugTest } from "./TestManager";
-import { ITestComponent, Test, TestComponentType, TestGroup } from "./TestTypes";
 import { getSpecsConfig } from "./SpecsConfig";
 import { associateTestItemAndTest, testItemToTest } from "./TestItems";
+import { buildTestsProject, debugTest, discoverTests, runTest } from "./TestManager";
+import { ITestComponent, Test, TestComponentType, TestGroup } from "./TestTypes";
 
 const CONTROLLER_ID = "specs-explorer";
 const CONTROLLER_LABEL = "Specs Explorer";
@@ -122,25 +122,42 @@ class TestExplorer {
                 this.addTestsToRun(test, testsToRun);
             });
 
-        run.appendOutput(`Running ${testsToRun.length} tests\n`);
+        // run.appendOutput(`Running ${testsToRun.length} tests\n`);
 
         while (testsToRun.length > 0 && !token.isCancellationRequested) {
+            // run.appendOutput(`Tests remaining: ${testsToRun.length}\n`);
+
             const testItem = testsToRun.pop()!;
+            // run.appendOutput(`Test item: ${testItem.label}\n`);
             if (request.exclude?.includes(testItem)) continue;
 
             const testComponent = testItemToTest(testItem);
+            if (!testComponent) continue;
+
             if (testComponent.type === TestComponentType.TestGroup) continue;
             const test = testComponent as Test;
+            // run.appendOutput(`Running test: ${test.description}\n`);
 
             const start = Date.now();
             run.started(testItem);
             const testResult = await runTest(test.suiteId, test.filePath, test.lineNumber);
-            if (!testResult) continue;
+            if (!testResult) {
+                // run.appendOutput(`Test not run: ${test.description}\n`);
+                continue;
+            }
 
             const duration = Date.now() - start;
-            if (testResult.testPassed) run.passed(testItem, duration);
-            else run.failed(testItem, new vscode.TestMessage(testResult.testOutput), duration);
+            if (testResult.testPassed) {
+                // run.appendOutput(`Test passed: ${test.description}\n`);
+                run.passed(testItem, duration);
+            }
+            else {
+                // run.appendOutput(`Test failed: ${test.description}\n`);
+                run.failed(testItem, new vscode.TestMessage(testResult.testOutput), duration);
+            }
         }
+
+        // run.appendOutput("All tests run\n");
         run.end();
     }
 

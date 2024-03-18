@@ -8,7 +8,7 @@ Describe("Something") {
     Setup { std::cout << "Inner Setup" << std::endl; }
     Test("Test 1") {
         //
-        throw "Kaboom!";
+        throw "Kaboom!!!!";
     }
 
     Describe("Nested Describe") {
